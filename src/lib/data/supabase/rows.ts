@@ -170,10 +170,22 @@ export const conversationWithMessagesRow = conversationRow.extend({
   ),
 });
 
+export const connectionRow = z.object({
+  id: uuid,
+  status: z.enum(["active", "login_required", "pending_expiration", "revoked", "error", "disconnected"]),
+  last_successful_sync_at: timestamp.nullable(),
+  last_sync_attempt_at: timestamp.nullable(),
+  last_error_code: z.string().nullable(),
+  institution: z.object({ name: z.string() }).nullable(),
+  accounts: z.array(z.object({ count: z.number().int() })),
+});
+
 export const usageRow = z.object({ request_count: z.number().int(), input_tokens: z.number().int(), output_tokens: z.number().int() });
 
 // Column lists kept next to the schemas so selects and validation stay in sync.
 export const SELECT = {
+  connection:
+    "id, status, last_successful_sync_at, last_sync_attempt_at, last_error_code, institution:institutions(name), accounts(count)",
   profile: "display_name, base_currency, timezone, safety_buffer_minor, include_expected_income",
   account:
     "id, name, nickname, type, subtype, mask, currency, source, is_hidden, connection:bank_connections(status, last_successful_sync_at, institution:institutions(name))",

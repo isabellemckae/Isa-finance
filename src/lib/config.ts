@@ -44,6 +44,8 @@ export const envSchema = z
     PLAID_SECRET: optionalString,
     PLAID_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
     PLAID_WEBHOOK_URL: optionalString.pipe(z.url().optional()),
+    // Required for OAuth institutions (e.g. Discover). Must be registered in the Plaid dashboard.
+    PLAID_REDIRECT_URI: optionalString.pipe(z.url().optional()),
 
     TOKEN_ENCRYPTION_KEYS: optionalString,
     TOKEN_ENCRYPTION_ACTIVE_KEY_ID: optionalString,

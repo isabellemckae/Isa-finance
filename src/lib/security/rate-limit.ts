@@ -75,4 +75,8 @@ export const limiters = {
   mfa: createRateLimiter({ limit: 5, windowMs: 15 * 60_000 }),
   /** Personal CFO messages: per user, per minute (daily limits are stored in the database). */
   cfo: createRateLimiter({ limit: 8, windowMs: 60_000 }),
+  /** Bank linking, sync, reconnect and disconnect: per user, per minute. */
+  plaid: createRateLimiter({ limit: 10, windowMs: 60_000 }),
+  /** Unauthenticated Plaid webhook endpoint: per client IP, per minute. */
+  plaidWebhook: createRateLimiter({ limit: 120, windowMs: 60_000 }),
 };

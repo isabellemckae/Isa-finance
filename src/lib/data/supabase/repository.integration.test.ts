@@ -287,3 +287,20 @@ describe.skipIf(!URL || !SECRET)("Personal CFO persistence against PostgREST + R
     await rejects(a().recordAiUsage(-1, 0), "invalid");
   });
 });
+
+describe.skipIf(!URL || !SECRET)("Bank connections against PostgREST + RLS", () => {
+  it("lists only the owner's connections, with health and account counts", async () => {
+    const own = await repoFor(USER_A).listConnections();
+    expect(own).toEqual([
+      expect.objectContaining({
+        id: "cccccccc-0000-4000-8000-000000000001",
+        institutionName: "Fictional Test Bank",
+        status: "login_required",
+        accountCount: 1,
+        isDemo: false,
+      }),
+    ]);
+    expect(JSON.stringify(own)).not.toMatch(/cursor|ciphertext|access-/);
+    expect(await repoFor(USER_B).listConnections()).toEqual([]);
+  });
+});

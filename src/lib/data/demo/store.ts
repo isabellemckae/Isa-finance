@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { todayInTimeZone } from "@/lib/finance/dates";
-import type { BalanceSnapshot, FinancialData, Transaction } from "@/lib/finance/types";
+import type { BalanceSnapshot, ConnectionStatus, FinancialData, Transaction } from "@/lib/finance/types";
 import {
   RepositoryError,
   type AiUsage,
+  type BankConnectionSummary,
   type Conversation,
   type ConversationSummary,
   type FinanceRepository,
@@ -373,6 +374,33 @@ export class DemoRepository implements FinanceRepository {
     const c = this.state().conversations.find((x) => x.id === id);
     if (!c) throw new RepositoryError("not_found", "Conversation not found.");
     return c;
+  }
+
+  async listConnections(): Promise<BankConnectionSummary[]> {
+    // Demo "connections" are derived from the fictional linked accounts. Nothing here
+    // talks to Plaid; actions on them are disabled in the UI.
+    const RANK: Record<ConnectionStatus, number> = {
+      active: 0, pending_expiration: 1, login_required: 2, error: 3, revoked: 4, disconnected: 5,
+    };
+    const byInstitution = new Map<string, BankConnectionSummary>();
+    for (const a of this.state().data.accounts.filter((x) => x.source === "plaid")) {
+      const existing = byInstitution.get(a.institutionName);
+      const slug = a.institutionName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const next: BankConnectionSummary = existing ?? {
+        id: `demo-conn-${slug}`,
+        institutionName: a.institutionName,
+        status: a.connectionStatus,
+        lastSuccessfulSyncAt: a.lastSuccessfulSyncAt,
+        lastSyncAttemptAt: a.lastSuccessfulSyncAt,
+        lastErrorCode: a.connectionStatus === "login_required" ? "ITEM_LOGIN_REQUIRED" : null,
+        accountCount: 0,
+        isDemo: true,
+      };
+      next.accountCount += 1;
+      if (RANK[a.connectionStatus] > RANK[next.status]) next.status = a.connectionStatus;
+      byInstitution.set(a.institutionName, next);
+    }
+    return [...byInstitution.values()];
   }
 
   async listConversations(limit: number): Promise<ConversationSummary[]> {

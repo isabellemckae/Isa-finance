@@ -3,6 +3,7 @@ import type { z } from "zod";
 import { addMonths, startOfMonth, todayInTimeZone } from "@/lib/finance/dates";
 import type { BalanceSnapshot, FinancialData, TransactionOverride } from "@/lib/finance/types";
 import {
+  type BankConnectionSummary,
   RepositoryError,
   type AiUsage,
   type Conversation,
@@ -458,6 +459,25 @@ export class SupabaseRepository implements FinanceRepository {
   // ---------------------------------------------------------------------------
   // Personal CFO conversations & usage
   // ---------------------------------------------------------------------------
+
+  async listConnections(): Promise<BankConnectionSummary[]> {
+    const { data, error } = await this.table("bank_connections")
+      .select(rows.SELECT.connection)
+      .eq("user_id", this.userId)
+      .eq("provider", "plaid")
+      .order("created_at");
+    if (error) throw toRepositoryError(error);
+    return parseAll(rows.connectionRow, data).map((c) => ({
+      id: c.id,
+      institutionName: c.institution?.name ?? "Bank",
+      status: c.status,
+      lastSuccessfulSyncAt: c.last_successful_sync_at,
+      lastSyncAttemptAt: c.last_sync_attempt_at,
+      lastErrorCode: c.last_error_code,
+      accountCount: c.accounts[0]?.count ?? 0,
+      isDemo: false,
+    }));
+  }
 
   async listConversations(limit: number): Promise<ConversationSummary[]> {
     const { data, error } = await this.table("ai_conversations")

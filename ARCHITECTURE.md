@@ -178,63 +178,108 @@ enforces `ALLOWED_USER_EMAIL`.
 when `NODE_ENV=production`, and it can only ever serve the fictional dataset (the demo
 repository has no database access). A banner states that authentication is disabled.
 
-## 5. Bank integration (Plaid) — design, sandbox only
+## 5. Bank integration (Plaid), sandbox only, as built in Phase 4
+
+Code lives in `src/lib/plaid/`. `service.ts` (link, sync, reconnect, disconnect, webhooks)
+and `sync.ts` (pagination) depend only on two interfaces in `ports.ts`:
+`PlaidGateway` (the Plaid API; real implementation `client.ts`) and `PlaidStore` (privileged
+database writes; real implementation `supabase-store.ts` with the service-role client).
+`deps.ts` wires them together and refuses to run unless `plaidReadiness()` passes.
 
 ### 5.1 Flow
 
-1. Client asks `POST /api/plaid/link-token` → server calls `/link/token/create` with
-   `client_user_id = user.id`, products `transactions`, webhook URL, and (for update mode)
-   the item's access token.
-2. Plaid Link runs in the browser and returns a `public_token`.
-3. Client posts `public_token` to `POST /api/plaid/exchange`; server calls
-   `/item/public_token/exchange`, encrypts the `access_token`, stores it in
-   `bank_connection_secrets`, creates `bank_connections` + `accounts`, then runs an
-   initial sync. The access token never leaves the server.
+1. **Link.** The Accounts page calls `POST /api/plaid/link-token` (same-origin, auth + MFA,
+   rate-limited). The server calls `/link/token/create` with `client_user_id = user.id`,
+   product `transactions` (730 days), the webhook URL and the OAuth redirect URI if
+   configured. With a `connectionId`, it opens Link in **update mode** with that Item's
+   access token instead.
+2. Plaid Link (loaded from cdn.plaid.com, iframe UI) returns a one-time `public_token`.
+3. **Exchange.** `POST /api/plaid/exchange` accepts only `public-sandbox-…` tokens, calls
+   `/item/public_token/exchange`, refuses (and removes) any non-`access-sandbox-` token, looks
+   up the institution, encrypts the access token, and calls `create_plaid_connection`
+   (institution + connection + secret in one transaction). It then runs the first sync. If
+   that sync fails, the link is kept and the user can **Sync now**. The access token never
+   leaves the server.
+4. **OAuth institutions** (e.g. Discover) redirect back to `/accounts/oauth`, which resumes
+   Link with the link token saved in `sessionStorage` and `receivedRedirectUri`.
+5. **Reconnect.** After update-mode Link succeeds, `POST /api/plaid/reconnect` asks Plaid
+   (`/item/get`) whether the Item is healthy. Only then is the connection set back to
+   `active` and synced.
+6. **Disconnect.** `/item/remove` at Plaid first (Items that are already gone are fine; any
+   other failure changes nothing), then `disconnect_plaid_connection` deletes the token,
+   clears the cursor and marks the connection `disconnected`. History is kept.
 
 ### 5.2 Token encryption
 
-- AES-256-GCM, 96-bit random IV, AAD = `connection_id || user_id` (binds ciphertext to its row).
+- AES-256-GCM, 96-bit random IV, AAD = `isa-finance:plaid-token:v1:<connection>:<user>`
+  (binds a ciphertext to its row). Format `v1.<keyId>.<iv>.<ciphertext+tag>` (base64url).
 - Keyring from env: `TOKEN_ENCRYPTION_KEYS="k2:<base64 32B>,k1:<base64 32B>"`,
-  `TOKEN_ENCRYPTION_ACTIVE_KEY_ID=k2`. Ciphertext stores the key id, so old keys decrypt
-  while new writes use the active key. Keys live in the hosting provider's secret
-  store, never in the database. Rotation & recovery: `docs/SECURITY.md`.
+  `TOKEN_ENCRYPTION_ACTIVE_KEY_ID=k2`. Old keys keep decrypting; new writes use the active
+  key; `npm run tokens:reencrypt` migrates old ciphertexts. Keys never touch the database.
+  `create_plaid_connection` rejects any value that isn't in ciphertext format.
 
-### 5.3 Webhooks
+### 5.3 Webhooks (`POST /api/plaid/webhook`)
 
-- Verify the `Plaid-Verification` JWT: ES256 only, `kid` key fetched via
-  `/webhook_verification_key/get` (cached, refetched on unknown `kid`), `iat` within 5
-  minutes, and `request_body_sha256` equal to SHA-256 of the raw body.
-- Idempotency: insert into `webhook_events` keyed by body hash; duplicates return 200
-  without reprocessing.
-- `SYNC_UPDATES_AVAILABLE` → enqueue sync for the item. `ITEM_LOGIN_REQUIRED`,
-  `PENDING_EXPIRATION`, `USER_PERMISSION_REVOKED` → update connection status (UI offers
-  reconnect via Link update mode). Respond quickly; heavy work is async.
+- Exempt from the session check in `src/proxy.ts`. It is authenticated by signature instead.
+- Body capped at 64 KB; per-IP rate limit.
+- `Plaid-Verification` JWT: `alg` must be ES256, the key is fetched by `kid` from
+  `/webhook_verification_key/get` (cached 24 h, unknown kids cached 60 s), expired keys are
+  rejected, `iat` must be within 5 minutes, and `request_body_sha256` must equal the
+  SHA-256 of the exact raw body.
+- Non-sandbox `environment` values are rejected.
+- Idempotency: `webhook_events` keyed by body hash. A duplicate returns 200 without
+  processing, unless the earlier attempt failed (Plaid's retry is then processed).
+- `TRANSACTIONS` `SYNC_UPDATES_AVAILABLE` (and the legacy update codes): sync runs after the
+  response via `after()`.
+- `ITEM` `ERROR` / `PENDING_EXPIRATION` / `PENDING_DISCONNECT` / `USER_PERMISSION_REVOKED` /
+  `LOGIN_REPAIRED`: the connection status is updated, and `LOGIN_REPAIRED` also syncs.
 
-### 5.4 Cursor-based sync & recovery
+### 5.4 Cursor-based sync and recovery
 
 ```
 cursor0 = connection.transactions_cursor
-loop:
+loop (≤ 100 pages of 500):
   page = /transactions/sync(cursor)
-  buffer page.added / modified / removed
-  if TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION → discard buffer, restart from cursor0
-  until has_more = false
-apply buffer in one database transaction (upsert added/modified, mark removed,
-  reconcile pending→posted, detect transfers) AND persist new cursor in the same transaction
-record sync_runs row (counts, cursor before/after, sanitized error)
+  buffer added / modified / removed (latest operation per transaction id wins)
+  on TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION → discard buffer, restart from cursor0 (≤ 3 times)
+until has_more = false
+apply_plaid_sync(connection, cursor0, next_cursor, payload)   -- one DB transaction:
+  lock connection row; reject if cursor ≠ cursor0 (SQLSTATE PT409 → "superseded")
+  upsert accounts (never touching nickname / hidden), balance snapshots
+  upsert transactions on (user, 'plaid', external_id) with category matched by name
+  pending → posted: superseded_by + carry the user's overrides to the posted transaction
+  removed → is_removed (never deleted)
+  commit new cursor, last_successful_sync_at, status back to active
+record sync_runs (trigger, counts, cursors, error code only)
+afterwards: transfer detection for the owner (same as CSV imports)
 ```
 
-Because the cursor is committed atomically with the data, an interrupted sync simply
-restarts from the last committed cursor; upserts keyed on `(source, external_id)` make
-replays idempotent. A per-connection advisory lock prevents concurrent syncs.
+Because the cursor is committed atomically with the data, an interrupted or failed sync
+restarts from the last committed cursor, and replays are idempotent. Plaid error codes
+map to connection states. `ITEM_LOGIN_REQUIRED` → `login_required`, revoked access →
+`revoked`, invalid Item → `error`. Transient errors (rate limits, institution down) leave
+the status alone. The UI offers **Reconnect** for every state that needs it.
 
-### 5.5 Safeguards
+### 5.5 Mapping (`mapping.ts`)
 
-- `PLAID_ENV` must be `sandbox`; config validation (`src/lib/config.ts`) rejects any other
-  value. Enabling production requires a reviewed code change at the Phase 5 gate.
-- No `/transfer`, `/payment_initiation`, or `/processor` products are requested.
-- Institution compatibility (Discover — OAuth; United Heritage Credit Union — unverified)
-  is checked in Phase 4; CSV import covers unsupported institutions.
+Every Plaid object is validated with Zod. Invalid or unrepresentable records (e.g.
+unofficial currencies, sub-cent amounts) are skipped and counted, never guessed. Plaid's
+positive-is-outflow amount is flipped once (`fromPlaidAmount`). Credit `current` stays the
+amount owed and `available` stays available credit (never cash). Text is stripped of
+control and bidi characters and truncated. Masks keep at most the last 4 characters.
+Plaid personal-finance categories map onto the default categories, and unmapped ones stay
+uncategorized.
+
+### 5.6 Safeguards
+
+- Sandbox only, enforced in four places: config (`PLAID_ENV`), the client's hard-wired
+  base path, the token prefixes, and the webhook environment. Production requires a
+  reviewed code change at the Phase 5 gate.
+- No `/transfer`, `/payment_initiation`, `/auth` or `/processor` products.
+- Demo mode never contacts Plaid. Its connections are derived from fictional accounts
+  and have no actions.
+- Institution compatibility (Discover uses OAuth; United Heritage Credit Union is
+  unverified) is checked in Phase 5. CSV import covers unsupported institutions.
 
 ## 6. Financial calculation rules
 

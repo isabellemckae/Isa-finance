@@ -161,3 +161,15 @@ describe("DemoRepository CFO persistence", () => {
     expect(await repo.getAiUsageToday(new Date())).toEqual({ requests: 2, inputTokens: 150, outputTokens: 30 });
   });
 });
+
+describe("DemoRepository bank connections", () => {
+  it("lists fictional connections with their health, labeled as demo", async () => {
+    const connections = await fresh().listConnections();
+    expect(connections.length).toBeGreaterThan(0);
+    expect(connections.every((c) => c.isDemo && c.institutionName.includes("(fictional)"))).toBe(true);
+    expect(connections.find((c) => c.status === "login_required")).toMatchObject({ lastErrorCode: "ITEM_LOGIN_REQUIRED" });
+    expect(connections.reduce((n, c) => n + c.accountCount, 0)).toBe(
+      (await fresh().getFinancialData(new Date())).accounts.filter((a) => a.source === "plaid").length,
+    );
+  });
+});

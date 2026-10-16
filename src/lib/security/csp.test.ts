@@ -11,6 +11,13 @@ describe("buildCsp", () => {
     expect(csp).toContain("upgrade-insecure-requests");
   });
 
+  it("allows Plaid Link (sandbox) and nothing broader", () => {
+    const csp = buildCsp("n", { isDev: false });
+    expect(csp).toContain("frame-src https://cdn.plaid.com");
+    expect(csp).toContain("connect-src 'self' https://sandbox.plaid.com https://production.plaid.com;");
+    expect(csp).not.toMatch(/\*|https:(?!\/\/)/);
+  });
+
   it("allows eval only in development (React debugging)", () => {
     expect(buildCsp("n", { isDev: true })).toContain("'unsafe-eval'");
   });

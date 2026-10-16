@@ -14,6 +14,11 @@ import { refreshSession } from "@/lib/supabase/proxy";
 
 const PUBLIC_PATHS = ["/login"];
 const SESSION_PATHS = ["/mfa/setup", "/mfa/verify"];
+/**
+ * Server-to-server endpoints with their own authentication (Plaid webhooks are
+ * verified by signature in the route). No session is read or required.
+ */
+const MACHINE_PATHS = ["/api/plaid/webhook"];
 
 function matches(pathname: string, paths: string[]) {
   return paths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -29,7 +34,7 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("Content-Security-Policy", csp);
 
   let response: NextResponse;
-  if (readAuthMode(process.env) === "demo") {
+  if (readAuthMode(process.env) === "demo" || matches(request.nextUrl.pathname, MACHINE_PATHS)) {
     response = NextResponse.next({ request: { headers: requestHeaders } });
   } else {
     const session = await refreshSession(request, requestHeaders);

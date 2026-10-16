@@ -3,6 +3,7 @@ import type {
   AllocationKind,
   BalanceSnapshot,
   CategoryKind,
+  ConnectionStatus,
   DebtGoal,
   FinancialData,
   IncomeSource,
@@ -63,6 +64,9 @@ export interface FinanceRepository {
   /** Appends an audit event attributed to the user (no financial values in metadata). */
   audit(action: string, entityType: string, entityId: string | null): Promise<void>;
 
+  /** Bank connections (Plaid Items) with health and sync times. Never includes tokens. */
+  listConnections(): Promise<BankConnectionSummary[]>;
+
   // Personal CFO conversations (text and answer metadata only; never raw tool data)
   listConversations(limit: number): Promise<ConversationSummary[]>;
   getConversation(id: string): Promise<Conversation | null>;
@@ -73,6 +77,17 @@ export interface FinanceRepository {
   // Personal CFO usage limits (UTC day)
   getAiUsageToday(now: Date): Promise<AiUsage>;
   recordAiUsage(inputTokens: number, outputTokens: number): Promise<void>;
+}
+
+export interface BankConnectionSummary {
+  id: string;
+  institutionName: string;
+  status: ConnectionStatus;
+  lastSuccessfulSyncAt: string | null;
+  lastSyncAttemptAt: string | null;
+  lastErrorCode: string | null;
+  accountCount: number;
+  isDemo: boolean;
 }
 
 export interface ConversationSummary {

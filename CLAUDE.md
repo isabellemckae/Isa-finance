@@ -42,7 +42,9 @@ Run `npm run check` after every meaningful change, and run `test:db` after any m
   policies, composite FK to parents, `revoke all from anon`, and a test in
   `supabase/tests/rls.test.sql`.
 - The service-role client (`src/lib/supabase/admin.ts`) is only for the Plaid
-  sync and webhook paths.
+  link, sync and webhook paths (`src/lib/plaid/deps.ts`). Plaid logic in `service.ts`/`sync.ts`
+  talks only to the `PlaidGateway`/`PlaidStore` interfaces; test it with the fakes in
+  `fakes.test-util.ts`, and the store against PostgREST in the integration test.
 - No payment initiation, transfers or money movement, ever. The AI gets read-only tools only.
 - Personal CFO tools (`src/lib/cfo/tools.ts`) read only the frozen `CfoContext`. They never
   take a user or id parameter, never return internal ids or tokens, and every new tool needs

@@ -2,7 +2,9 @@
 -- standing in for the server-side Plaid sync that arrives in Phase 4.
 insert into auth.users (id, email) values
   ('aaaaaaaa-1111-4000-8000-000000000001', 'owner@example.test'),
-  ('bbbbbbbb-2222-4000-8000-000000000002', 'other@example.test');
+  ('bbbbbbbb-2222-4000-8000-000000000002', 'other@example.test'),
+  -- Used only by the Plaid store tests, so their links don't affect the repository tests.
+  ('cccccccc-3333-4000-8000-000000000003', 'plaid@example.test');
 
 insert into public.institutions (id, name) values
   ('11111111-2222-4000-8000-000000000000', 'Fictional Test Bank');

@@ -5,6 +5,7 @@ const PAGES = [
   "/accounts",
   "/accounts/demo-acct-meadowlark-card",
   "/accounts/new",
+  "/accounts/oauth",
   "/transactions",
   "/transactions/import",
   "/budget",

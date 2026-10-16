@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Link2, Plus, RefreshCw, Unplug } from "lucide-react";
+import { Link2, Plus, RefreshCw } from "lucide-react";
 import { loadPageData } from "@/lib/data/load";
 import { accountBalanceViews, creditUtilizationBps } from "@/lib/finance/balances";
 import { summarizePeriod } from "@/lib/finance/classification";
@@ -151,20 +151,16 @@ export default async function AccountDetailPage({ params }: PageProps<"/accounts
             <div className="space-y-3 text-sm">
               <p className="text-muted-foreground">
                 {account.connectionStatus === "active"
-                  ? "Balances and transactions update automatically once bank syncing is enabled."
-                  : "This connection needs to be renewed before it can sync again."}
+                  ? "Balances and transactions update from the bank through Plaid (read-only)."
+                  : account.connectionStatus === "disconnected"
+                    ? "This bank was disconnected. Its history is kept; nothing new syncs."
+                    : "This connection needs to be renewed before it can sync again."}
               </p>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" disabled aria-disabled>
-                  <RefreshCw aria-hidden /> Reconnect
-                </Button>
-                <Button variant="outline" disabled aria-disabled>
-                  <Unplug aria-hidden /> Disconnect
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Reconnect and disconnect use Plaid and arrive in Phase 4 (sandbox only).
-              </p>
+              <Button asChild variant="outline">
+                <Link href="/accounts#connections">
+                  <RefreshCw aria-hidden /> Sync, reconnect or disconnect
+                </Link>
+              </Button>
             </div>
           )}
         </Card>

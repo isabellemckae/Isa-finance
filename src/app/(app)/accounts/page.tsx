@@ -10,11 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Money } from "@/components/ui/money";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AccountRow } from "@/components/accounts/account-row";
+import { BankConnections } from "@/components/accounts/connections";
+import { getEnv } from "@/lib/env";
+import { plaidReadiness } from "@/lib/plaid/readiness";
 
 export const metadata = { title: "Accounts" };
 
 export default async function AccountsPage() {
-  const { data, now, currency } = await loadPageData();
+  const { data, now, currency, repo } = await loadPageData();
+  const connections = await repo.listConnections();
+  const readiness = plaidReadiness(getEnv());
   const summary = summarizeBalances(data.accounts, data.balances, { now, currency });
   const views = accountBalanceViews(data.accounts, data.balances, now);
   const visible = views.filter((v) => !v.account.isHidden);
@@ -61,7 +66,7 @@ export default async function AccountsPage() {
 
       {visible.length === 0 ? (
         <EmptyState icon={Link2} title="No accounts yet">
-          Add a manual account now. Bank connections arrive with the Plaid sandbox in Phase 4.
+          Add a manual account, import a CSV, or connect a bank below.
         </EmptyState>
       ) : (
         ACCOUNT_GROUPS.map((group) => {
@@ -103,17 +108,7 @@ export default async function AccountsPage() {
         </details>
       )}
 
-      <Card className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="font-medium">Connect a bank</p>
-          <p className="text-sm text-muted-foreground">
-            Secure bank linking with Plaid (sandbox first) arrives in Phase 4. No bank connections are active.
-          </p>
-        </div>
-        <Button variant="outline" disabled aria-disabled>
-          <Link2 aria-hidden /> Coming in Phase 4
-        </Button>
-      </Card>
+      <BankConnections connections={connections} readiness={readiness} now={now} />
     </div>
   );
 }

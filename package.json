@@ -13,7 +13,8 @@
     "test:db": "bash supabase/tests/run-db-tests.sh",
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm test",
-    "test:integration": "bash scripts/test-integration.sh"
+    "test:integration": "bash scripts/test-integration.sh",
+    "tokens:reencrypt": "node --no-warnings --experimental-strip-types --env-file-if-exists=.env.local scripts/reencrypt-tokens.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.5.0",

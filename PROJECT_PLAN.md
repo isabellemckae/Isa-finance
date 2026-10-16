@@ -138,7 +138,7 @@ Acceptance criteria:
 - Acceptance: every numeric claim in an answer is traceable to a tool result; tool
   arguments are zod-validated; prompt-injection tests (malicious merchant names) pass.
 
-### Phase 4 — Plaid sandbox integration
+### Phase 4 — Plaid sandbox integration ✅ (sandbox; needs owner keys for an end-to-end run)
 - Link token / exchange / webhook routes, AES-256-GCM token encryption with external
   keyring, webhook JWT verification, idempotent `/transactions/sync` with cursor
   recovery, reconnection (update mode) and disconnection (`/item/remove`).
@@ -158,7 +158,8 @@ Acceptance criteria:
 | Phase 1 foundation | ✅ Complete, reviewed and approved by the owner |
 | Phase 2 accounts, transactions, budget, Supabase data | ✅ Complete, approved by the owner |
 | Phase 3 Personal CFO | ✅ Complete. AI answers need the owner's OpenAI key |
-| Phase 4 Plaid sandbox | 🚧 In progress |
+| Phase 4 Plaid sandbox | ✅ Complete. End-to-end sandbox run needs the owner's Plaid sandbox keys |
+| Phase 5 review gate (production banking, deployment) | ⏸ Needs owner approval |
 
 Phase 1 checklist:
 
@@ -237,6 +238,40 @@ client bundles.
 
 Not verified in Phase 3: live OpenAI answers (needs the owner's key). The adapter is
 typed against the official SDK and covered by fake-model tests of the agent loop.
+
+Phase 4 checklist:
+
+- [x] AES-256-GCM token encryption with a rotating keyring and row binding; re-encryption
+      job (`npm run tokens:reencrypt`)
+- [x] Webhook verification (ES256 JWT, key by `kid`, 5-minute window, body hash), tested
+      with generated keys including forged, replayed, tampered and wrong-algorithm cases
+- [x] Plaid → domain mapping with Zod validation (amount sign, credit balances, categories,
+      text sanitization)
+- [x] `/transactions/sync` engine: pagination, mutation-during-pagination restart, page and
+      restart caps, latest-operation-wins buffering
+- [x] Service: link (sandbox-only tokens), first sync, update-mode reconnect verified with
+      `/item/get`, disconnect with `/item/remove`, error-code → connection status mapping,
+      webhook dispatch with retries after failures
+- [x] Migration `…000500_plaid_sync.sql`: `create_plaid_connection`, `apply_plaid_sync`
+      (atomic, optimistic cursor, pending → posted with override carry-over, removals),
+      `disconnect_plaid_connection`. Service role only; SQL tests
+- [x] Supabase Plaid store, verified against PostgREST (link → sync → RLS visibility,
+      cursor conflicts, webhook idempotency, disconnect, privilege checks)
+- [x] Routes: link token, exchange, reconnect, webhook (signature-authenticated, exempt from
+      the session check); server actions for sync and disconnect
+- [x] Accounts: bank connections panel (health, last sync, Sync now, Reconnect, Disconnect),
+      Plaid Link button, OAuth return page, readiness messages naming missing settings;
+      demo mode explains why linking is off
+- [x] CSP updated for Plaid Link (script loader, iframe, API hosts)
+
+Phase 4 verification (latest run): ESLint clean · `tsc` clean · Vitest **289** unit tests ·
+RLS/function SQL suites (Phases 1–4) passing on PostgreSQL 16 · **20** PostgREST
+integration tests · Playwright **89** tests (iPhone 15 emulation + desktop) · `next build`
+succeeds · no secrets in client bundles.
+
+Not verified in Phase 4 (needs the owner's credentials): a live Plaid sandbox Link session,
+webhooks delivered by Plaid to a public URL, and OAuth redirects. The Plaid client is
+typed against the official SDK; all logic around it is tested with a fake gateway.
 
 _Status is updated at the end of each working session; see the git log for detail._
 

@@ -4,10 +4,12 @@ A private, single-user, mobile-first **Personal CFO**. It consolidates balances 
 transactions, tracks budgets, and answers questions with an AI assistant whose numbers
 come only from deterministic, tested application code.
 
-> **Status: Phase 3 complete.** Accounts, Activity, Budget and the Personal CFO are built.
-> Data comes from **clearly labeled fictional demo data** or from your own Supabase project.
-> No bank is connected. The CFO uses OpenAI only when you set `OPENAI_API_KEY`; without
-> it, it gives calculated (non-AI) answers. Plaid (Phase 4) is sandbox-only.
+> **Status: Phase 4 complete (sandbox).** Accounts, Activity, Budget, the Personal CFO and
+> Plaid **sandbox** bank linking are built. Data comes from **clearly labeled fictional demo
+> data** or from your own Supabase project. No real bank is connected: production banking
+> (Discover, United Heritage Credit Union) is the Phase 5 gate and needs your approval.
+> The CFO uses OpenAI only when you set `OPENAI_API_KEY`; without it, it gives calculated
+> (non-AI) answers.
 > See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for exactly what is built and what is planned.
 
 | Document | Contents |
@@ -30,7 +32,7 @@ come only from deterministic, tested application code.
 | Supabase Auth: password sign-in, TOTP MFA, allowlist, rate limits | ✅ Implemented. **Needs your Supabase project for end-to-end verification** |
 | Personal CFO chat: 15 read-only tools, conversation history, follow-ups, verified amounts, offline fallback | ✅ Calculated answers work today. **AI answers need your OpenAI key** |
 | Proactive insights (unusual or duplicate charges, spikes, low-cash forecast, budget, bills, savings) and weekly/monthly briefings | ✅ |
-| Plaid (sandbox) linking, reconnect, disconnect | ⏸ Phase 4. Buttons are shown disabled |
+| Plaid sandbox: Link, encrypted tokens, account/balance/transaction sync, webhooks, reconnect (update mode), disconnect, OAuth return | ✅ Implemented and tested with a fake Plaid and a real local database. **Needs your Plaid sandbox keys for an end-to-end run** |
 
 ## Local development
 
@@ -83,10 +85,24 @@ lists every variable.
    `OPENAI_MODEL`, `CFO_DAILY_REQUEST_LIMIT` and `CFO_DAILY_TOKEN_LIMIT`. Requests are
    sent with `store: false`. Review OpenAI's API data-usage policy, and ask about
    zero-data-retention if you want it.
-3. **Plaid** (Phase 4): sandbox `client_id` and sandbox secret only.
-4. **Encryption keyring** (Phase 4): generated locally, as described in `docs/SECURITY.md`.
-
-The `SUPABASE_SECRET_KEY` (service role) is not needed until Phase 4.
+3. **Plaid sandbox** (bank linking; needs `AUTH_MODE=supabase` and `DATA_SOURCE=supabase`):
+   - At dashboard.plaid.com → Developers → Keys, copy the **client ID** and the
+     **Sandbox** secret into `PLAID_CLIENT_ID` and `PLAID_SECRET`. Leave `PLAID_ENV=sandbox`.
+     The app's Plaid client is hard-wired to the sandbox host, and only `public-sandbox-` /
+     `access-sandbox-` tokens are accepted.
+   - `SUPABASE_SECRET_KEY`: Supabase → Project Settings → API keys → secret key. Server
+     only; used only by the Plaid link, sync and webhook code.
+   - Encryption keyring: generate a key locally (command in `docs/SECURITY.md` §4) and set
+     `TOKEN_ENCRYPTION_KEYS=k1:<key>` and `TOKEN_ENCRYPTION_ACTIVE_KEY_ID=k1`. Back it up
+     offline: without it, stored bank connections must be re-linked.
+   - Webhooks (optional; without them use **Sync now**): set `PLAID_WEBHOOK_URL` to the
+     public HTTPS address of `/api/plaid/webhook` on your deployment. Plaid cannot reach
+     `localhost`.
+   - OAuth banks (optional in sandbox, required for Discover in production): register a
+     redirect URI in Plaid → Developers → API → Allowed redirect URIs, pointing at
+     `/accounts/oauth`, and set `PLAID_REDIRECT_URI` to the same value.
+   - Then on Accounts choose **Connect a bank (sandbox)** and sign in with Plaid's test
+     user `user_good` / `pass_good`.
 
 ## Security assumptions
 

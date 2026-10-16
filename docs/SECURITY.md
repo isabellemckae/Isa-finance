@@ -59,8 +59,10 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 1. Generate a new key `k(n+1)`. Prepend it to `TOKEN_ENCRYPTION_KEYS` and set
    `TOKEN_ENCRYPTION_ACTIVE_KEY_ID=k(n+1)`. Deploy. New writes use the new key, and old
    ciphertexts still decrypt.
-2. Run the re-encryption job (Phase 4: `npm run tokens:reencrypt`), which decrypts each
-   secret with its recorded key id and re-encrypts with the active key in a transaction.
+2. Run `npm run tokens:reencrypt` with the new keyring and the service-role key in the
+   environment (it reads `.env.local` if present). It decrypts each secret written with an
+   older key and re-encrypts it with the active key, updating a row only if it hasn't
+   changed since it was read. It prints counts and connection ids only.
 3. Verify that no rows reference the old key id, then remove the old key from the
    keyring and deploy.
 4. If a key was **compromised**, also rotate the Plaid tokens themselves with
@@ -87,3 +89,15 @@ same way.
 - [ ] Rate limiting moved to a shared store.
 - [ ] OpenAI data-handling terms reviewed; usage limits set in the OpenAI dashboard.
 - [ ] Vercel deployment protection / custom domain with HTTPS only.
+
+## 6. Plaid integration controls (Phase 4, sandbox)
+
+| Control | Where |
+|---|---|
+| Sandbox only: client hard-wired to `PlaidEnvironments.sandbox`; config rejects other `PLAID_ENV`; only `public-sandbox-`/`access-sandbox-` tokens accepted; non-sandbox webhooks rejected | `src/lib/plaid/client.ts`, `service.ts`, `src/lib/config.ts` |
+| Only the `transactions` product; no transfer, payment, auth or processor products | `client.ts` |
+| Access tokens encrypted (AES-256-GCM, AAD = connection + user) before storage; the database refuses anything not in ciphertext format; never returned to the browser or logged | `src/lib/security/token-crypto.ts`, `create_plaid_connection` |
+| Link, exchange and reconnect routes: same-origin check, auth + MFA, per-user rate limit, 1 KB JSON bodies; ownership checked for every connection id | `src/app/api/plaid/*` |
+| Webhooks: no session; ES256 JWT signature, key by `kid` (cached), 5-minute `iat` window, raw-body SHA-256, 64 KB cap, per-IP rate limit, idempotent by body hash (failed attempts may be retried) | `webhook-verify.ts`, `service.ts`, `src/proxy.ts` |
+| Sync: whole result and cursor committed in one transaction with an optimistic cursor check; owner derived from the connection row; service-role-only SQL functions | `supabase/migrations/…000500_plaid_sync.sql` |
+| Plaid errors reduced to their code; users see fixed messages | `client.ts`, `service.ts` |

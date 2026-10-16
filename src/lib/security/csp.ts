@@ -4,7 +4,9 @@
  * - Scripts: only those carrying the nonce, plus scripts they load ('strict-dynamic').
  * - Styles: 'unsafe-inline' is required for inline style attributes used by Recharts and
  *   Next.js. This is an accepted trade-off because script execution stays nonce-restricted.
- * - Plaid Link (Phase 4) needs cdn.plaid.com for its iframe; it is pre-allowed for frames only.
+ * - Plaid Link: its loader script comes from cdn.plaid.com (allowed through 'strict-dynamic'
+ *   because our nonced bundle inserts it; the host is listed for older browsers), its UI
+ *   runs in a cdn.plaid.com iframe, and it reports to Plaid's API hosts.
  */
 
 export function createNonce(): string {
@@ -18,11 +20,17 @@ export function createNonce(): string {
 export function buildCsp(nonce: string, options: { isDev: boolean }): string {
   const directives: Record<string, string[]> = {
     "default-src": ["'self'"],
-    "script-src": ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", ...(options.isDev ? ["'unsafe-eval'"] : [])],
+    "script-src": [
+      "'self'",
+      `'nonce-${nonce}'`,
+      "'strict-dynamic'",
+      "https://cdn.plaid.com",
+      ...(options.isDev ? ["'unsafe-eval'"] : []),
+    ],
     "style-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:", "blob:"],
     "font-src": ["'self'"],
-    "connect-src": ["'self'", ...(options.isDev ? ["ws:"] : [])],
+    "connect-src": ["'self'", "https://sandbox.plaid.com", "https://production.plaid.com", ...(options.isDev ? ["ws:"] : [])],
     "frame-src": ["https://cdn.plaid.com"],
     "worker-src": ["'self'", "blob:"],
     "object-src": ["'none'"],
