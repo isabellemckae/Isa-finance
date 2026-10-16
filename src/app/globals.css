@@ -1,26 +1,133 @@
 @import "tailwindcss";
 
+/* Class-based dark mode, set before first paint by ThemeScript. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * ISA Finance design tokens.
+ * Blush accents on charcoal / black / white. Components use these roles, not raw hex.
+ * Chart series colors were validated with the dataviz palette checker
+ * (lightness band, chroma floor, CVD separation, contrast) in both modes.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: #fbf8f7;
+  --surface: #ffffff;
+  --surface-muted: #f7f0ef;
+  --foreground: #1d191b;
+  --muted-foreground: #6a6064;
+  --subtle-foreground: #7f7478;
+  --border: #ece3e2;
+  --ring: #c2577a;
+
+  --primary: #1d191b;
+  --primary-foreground: #ffffff;
+  --blush: #f6dfe3;
+  --blush-foreground: #8e3556;
+  --accent-ink: #a8456a;
+
+  --positive: #2f7a59;
+  --positive-soft: #e5f2ec;
+  --attention: #a14c1d;
+  --attention-soft: #fbeadf;
+  --info-soft: #eeeaf6;
+
+  --chart-income: #c2577a;
+  --chart-spending: #6a5a9e;
+  --chart-grid: #ece3e2;
+  --chart-axis: #7f7478;
+
+  --shadow-card: 0 1px 2px rgb(29 25 27 / 0.04), 0 8px 24px -12px rgb(29 25 27 / 0.12);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #141113;
+  --surface: #211d1f;
+  --surface-muted: #2a2528;
+  --foreground: #f6eff1;
+  --muted-foreground: #b9adb1;
+  --subtle-foreground: #9a8e92;
+  --border: #382f33;
+  --ring: #e79ab2;
+
+  --primary: #f3c9d4;
+  --primary-foreground: #1d191b;
+  --blush: #3b2930;
+  --blush-foreground: #f3c0cf;
+  --accent-ink: #ec9bb5;
+
+  --positive: #7cc9a2;
+  --positive-soft: #1f3129;
+  --attention: #f0a174;
+  --attention-soft: #3a2a20;
+  --info-soft: #2a2535;
+
+  --chart-income: #d86a8e;
+  --chart-spending: #7d6cc0;
+  --chart-grid: #382f33;
+  --chart-axis: #9a8e92;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -16px rgb(0 0 0 / 0.6);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-blush: var(--blush);
+  --color-blush-foreground: var(--blush-foreground);
+  --color-accent-ink: var(--accent-ink);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-attention: var(--attention);
+  --color-attention-soft: var(--attention-soft);
+  --color-info-soft: var(--info-soft);
+  --color-chart-income: var(--chart-income);
+  --color-chart-spending: var(--chart-spending);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --shadow-card: var(--shadow-card);
+  --radius-card: 1.25rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

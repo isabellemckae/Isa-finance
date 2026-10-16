@@ -1,9 +1,13 @@
 import type { NextConfig } from "next";
+import { STATIC_SECURITY_HEADERS } from "./src/lib/security/csp";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  // Cache Components stays OFF: every financial page renders per request and nothing
+  // user-specific enters a shared server cache (ARCHITECTURE.md §7).
+  poweredByHeader: false,
+  // Keep the dev-only indicator clear of the mobile bottom navigation.
+  devIndicators: { position: "top-right" },
+  reactStrictMode: true,
   turbopack: {
     rules: {
       "*.css": {
@@ -11,6 +15,9 @@ const nextConfig: NextConfig = {
         as: "*.css",
       },
     },
+  },
+  async headers() {
+    return [{ source: "/:path*", headers: [...STATIC_SECURITY_HEADERS] }];
   },
 };
 
