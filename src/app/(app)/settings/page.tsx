@@ -1,5 +1,10 @@
-import { KeyRound, LogOut, ShieldCheck } from "lucide-react";
-import { requireUser } from "@/lib/auth/dal";
+import { Calculator, KeyRound, LogOut, ShieldCheck } from "lucide-react";
+import { loadPageData } from "@/lib/data/load";
+import { updateProfileAction } from "@/lib/actions/budget";
+import { minorToDecimalString } from "@/lib/finance/money";
+import { Checkbox, Field, MoneyInput, Select, TextInput } from "@/components/ui/field";
+import { ActionForm, SubmitButton } from "@/components/forms/action-form";
+import { DemoEditsNote } from "@/components/layout/demo-edits-note";
 import { signOut } from "@/lib/auth/actions";
 import { getEnv } from "@/lib/env";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,10 +14,23 @@ import { ThemeToggle } from "@/components/layout/theme";
 
 export const metadata = { title: "Settings" };
 
+const TIMEZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+  "UTC",
+];
+
 export default async function SettingsPage() {
-  const user = await requireUser();
+  const { user, data } = await loadPageData();
+  const profile = data.profile;
   const env = getEnv();
   const integrations = [
+    { name: "Supabase data", configured: env.DATA_SOURCE === "supabase", phase: 2, note: "RLS-protected storage" },
     { name: "Plaid (bank connections)", configured: Boolean(env.PLAID_CLIENT_ID && env.PLAID_SECRET), phase: 4, note: "Sandbox only" },
     { name: "OpenAI (Personal CFO)", configured: Boolean(env.OPENAI_API_KEY), phase: 3, note: "Server-side only" },
     { name: "Token encryption keyring", configured: Boolean(env.TOKEN_ENCRYPTION_KEYS), phase: 4, note: "Required before linking banks" },
@@ -80,6 +98,40 @@ export default async function SettingsPage() {
             </li>
           ))}
         </ul>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Calculation preferences</CardTitle>
+            <CardDescription>These change how safe-to-spend and plans are calculated.</CardDescription>
+          </div>
+          <Calculator className="size-5 text-accent-ink" aria-hidden />
+        </CardHeader>
+        <ActionForm action={updateProfileAction} className="space-y-4">
+          <Field label="Your name" htmlFor="displayName">
+            <TextInput id="displayName" name="displayName" maxLength={80} defaultValue={profile.displayName ?? ""} />
+          </Field>
+          <Field label="Safety buffer" htmlFor="safetyBuffer" hint="Always kept aside in safe-to-spend.">
+            <MoneyInput id="safetyBuffer" name="safetyBuffer" required defaultValue={minorToDecimalString(profile.safetyBufferMinor, profile.baseCurrency)} />
+          </Field>
+          <Field label="Time zone" htmlFor="timezone" hint="Defines “today” and month boundaries.">
+            <Select id="timezone" name="timezone" defaultValue={profile.timezone}>
+              {TIMEZONES.includes(profile.timezone) ? null : <option value={profile.timezone}>{profile.timezone}</option>}
+              {TIMEZONES.map((tz) => (
+                <option key={tz} value={tz}>{tz.replace("_", " ")}</option>
+              ))}
+            </Select>
+          </Field>
+          <Checkbox
+            name="includeExpectedIncome"
+            defaultChecked={profile.includeExpectedIncome}
+            label="Count expected paychecks in safe-to-spend"
+            description="Off by default: income only counts once it arrives. Turning this on is less conservative."
+          />
+          <SubmitButton>Save preferences</SubmitButton>
+          <DemoEditsNote show={data.isDemo} />
+        </ActionForm>
       </Card>
 
       <Card>

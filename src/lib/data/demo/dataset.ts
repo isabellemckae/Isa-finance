@@ -405,6 +405,7 @@ function buildTransactions(today: ISODate): Transaction[] {
       description,
       merchantName,
       defaultCategoryId: category ? cat(category) : null,
+      dedupeHash: null,
       isRemoved: false,
       supersededBy: null,
     });

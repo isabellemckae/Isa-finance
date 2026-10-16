@@ -56,3 +56,24 @@ describe("occurrences", () => {
     expect(occurrences("2026-10-05", "irregular", "2026-10-01", "2026-12-31")).toEqual(["2026-10-05"]);
   });
 });
+
+describe("monthlyEquivalentMinor", () => {
+  it("normalizes bill cadences to a monthly cost", async () => {
+    const { monthlyEquivalentMinor } = await import("./schedule");
+    expect(monthlyEquivalentMinor({ amountMinor: 1_000, cadence: "weekly" })).toBe(4_333);
+    expect(monthlyEquivalentMinor({ amountMinor: 1_000, cadence: "biweekly" })).toBe(2_167);
+    expect(monthlyEquivalentMinor({ amountMinor: 1_599, cadence: "monthly" })).toBe(1_599);
+    expect(monthlyEquivalentMinor({ amountMinor: 30_000, cadence: "quarterly" })).toBe(10_000);
+    expect(monthlyEquivalentMinor({ amountMinor: 12_000, cadence: "annual" })).toBe(1_000);
+  });
+});
+
+describe("monthFromParam", () => {
+  it("accepts YYYY-MM and rejects anything else", async () => {
+    const { monthFromParam } = await import("./dates");
+    expect(monthFromParam("2026-09", "2026-10-16")).toBe("2026-09-01");
+    for (const bad of ["2026-13", "2026-9", "1999-01", "abc", ["2026-09"], undefined]) {
+      expect(monthFromParam(bad, "2026-10-16")).toBe("2026-10-01");
+    }
+  });
+});

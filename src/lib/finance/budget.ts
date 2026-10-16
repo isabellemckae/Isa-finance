@@ -12,7 +12,7 @@ import type { AllocationKind, Budget, Category } from "./types";
  * Over-budget amounts are reported as negative remaining, never clamped.
  */
 
-export type BudgetStatus = "on_track" | "near_limit" | "over" | "not_started";
+export type BudgetStatus = "on_track" | "near_limit" | "at_plan" | "over" | "not_started";
 
 export interface BudgetLine {
   categoryId: string;
@@ -43,6 +43,7 @@ export const NEAR_LIMIT_BPS = 9_000;
 function statusFor(planned: number, actual: number): BudgetStatus {
   if (actual === 0) return "not_started";
   if (actual > planned) return "over";
+  if (actual === planned) return "at_plan";
   if (ratioBps(actual, planned) >= NEAR_LIMIT_BPS) return "near_limit";
   return "on_track";
 }

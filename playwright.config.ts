@@ -9,6 +9,8 @@ const PORT = 3100;
 export default defineConfig({
   testDir: "tests/e2e",
   fullyParallel: true,
+  workers: process.env.CI ? 2 : 3,
+  timeout: 45_000,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
   use: {
@@ -16,7 +18,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "mobile", use: { ...devices["Pixel 7"] } },
+    { name: "iphone", use: { ...devices["iPhone 15"], browserName: "chromium" } },
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1360, height: 900 } } },
   ],
   webServer: {

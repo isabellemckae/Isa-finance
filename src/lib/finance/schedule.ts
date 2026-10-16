@@ -1,4 +1,5 @@
 import { addDays, addMonths, compareDates } from "./dates";
+import { divRoundHalfUp } from "./money";
 import type { BillCadence, IncomeCadence, IncomeSource, ISODate, RecurringBill } from "./types";
 
 /** Expansion of recurring bills and income into dated occurrences. */
@@ -102,4 +103,16 @@ export function expectedIncome(sources: readonly IncomeSource[], start: ISODate,
       })),
     )
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Monthly cost of a recurring bill (weekly × 52 / 12, etc.), rounded half up to the cent. */
+export function monthlyEquivalentMinor(bill: Pick<RecurringBill, "amountMinor" | "cadence">): number {
+  const perYear: Record<RecurringBill["cadence"], bigint> = {
+    weekly: 52n,
+    biweekly: 26n,
+    monthly: 12n,
+    quarterly: 4n,
+    annual: 1n,
+  };
+  return Number(divRoundHalfUp(BigInt(bill.amountMinor) * perYear[bill.cadence], 12n));
 }

@@ -14,6 +14,7 @@ npm run lint         # ESLint
 npm run typecheck    # tsc --noEmit
 npm test             # Vitest unit tests
 npm run test:db      # RLS/ownership tests on a throwaway local Postgres
+npm run test:integration  # Supabase repository vs real PostgREST (Docker + local Postgres)
 npm run test:e2e     # Playwright (demo mode)
 npm run build        # production build
 npm run check        # lint + typecheck + unit tests
@@ -30,6 +31,13 @@ Run `npm run check` after every meaningful change, and run `test:db` after any m
   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` may be public.
 - Every page, server action and route handler that touches financial data calls
   `requireUser()` first and passes `user.id` down. Never trust a user id from input.
+  Pages use `loadPageData()`; mutations go through `runAction()` in `src/lib/actions/run.ts`,
+  which authorizes, binds the repository to the user and maps errors to safe messages.
+- Validate every form field with the helpers in `src/lib/forms.ts` (strict money parsing,
+  plain ids, bounded text). Ids are interpolated into PostgREST filters only after
+  `idField`/UUID validation.
+- The demo repository and the Supabase repository must enforce the same rules (for example,
+  manual-only operations). Add a case to both `store.test.ts` and the integration test.
 - Every new user-owned table: `user_id` column, RLS enabled and forced, the four owner
   policies, composite FK to parents, `revoke all from anon`, and a test in
   `supabase/tests/rls.test.sql`.

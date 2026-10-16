@@ -83,4 +83,10 @@ describe("computeBudgetPerformance", () => {
     expect(perf.spending).toEqual({ plannedMinor: 80_000, actualMinor: 81_000, remainingMinor: -1_000 });
     expect(perf.unbudgeted).toEqual([{ categoryId: shopping.id, name: "Shopping", actualMinor: 9_900 }]);
   });
+
+  it("marks a line spent exactly to plan as at plan, not near the limit", () => {
+    const enriched = enrich([tx(checking.id, { amountMinor: -20_000, defaultCategoryId: dining.id, date: "2026-10-05" })]);
+    const perf = computeBudgetPerformance(budget, enriched, categories);
+    expect(perf.lines.find((l) => l.name === "Dining")?.status).toBe("at_plan");
+  });
 });

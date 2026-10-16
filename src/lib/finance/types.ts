@@ -80,6 +80,8 @@ export interface Transaction {
   description: string;
   merchantName: string | null;
   defaultCategoryId: string | null;
+  /** CSV imports only: deterministic hash used to make re-imports idempotent. */
+  dedupeHash: string | null;
   isRemoved: boolean;
   supersededBy: string | null;
 }

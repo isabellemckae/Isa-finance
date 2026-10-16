@@ -115,3 +115,57 @@ export function detectTransfers(input: {
     ambiguous: ambiguous.filter((a) => (seen.has(a.transactionId) ? false : seen.add(a.transactionId))),
   };
 }
+
+/**
+ * Validates a user-requested transfer link. Returns the link (with the right kind)
+ * or a human-readable reason it is not allowed.
+ */
+export function validateTransferLink(
+  input: { outflowTransactionId: string; inflowTransactionId: string },
+  transactions: readonly Transaction[],
+  accounts: readonly Account[],
+  existingLinks: readonly TransferLink[],
+): { ok: true; link: Omit<TransferLink, "detectedBy"> } | { ok: false; reason: string } {
+  const out = transactions.find((t) => t.id === input.outflowTransactionId);
+  const inn = transactions.find((t) => t.id === input.inflowTransactionId);
+  if (!out || !inn) return { ok: false, reason: "Transaction not found." };
+  if (out.amountMinor >= 0 || inn.amountMinor <= 0) return { ok: false, reason: "Pick one outflow and one inflow." };
+  if (out.accountId === inn.accountId) return { ok: false, reason: "Both sides are in the same account." };
+  if (out.currency !== inn.currency || -out.amountMinor !== inn.amountMinor) {
+    return { ok: false, reason: "The amounts don't match." };
+  }
+  const linked = new Set(existingLinks.flatMap((l) => [l.outflowTransactionId, l.inflowTransactionId]));
+  if (linked.has(out.id) || linked.has(inn.id)) return { ok: false, reason: "One of these is already linked." };
+  const destination = accounts.find((a) => a.id === inn.accountId);
+  return {
+    ok: true,
+    link: {
+      outflowTransactionId: out.id,
+      inflowTransactionId: inn.id,
+      kind: destination?.type === "credit" ? "credit_card_payment" : "transfer",
+    },
+  };
+}
+
+/** Candidate partners for a transaction: opposite sign, same amount, other account, within the window. */
+export function transferCandidates(
+  tx: Transaction,
+  transactions: readonly Transaction[],
+  existingLinks: readonly TransferLink[],
+  windowDays = 7,
+): Transaction[] {
+  const linked = new Set(existingLinks.flatMap((l) => [l.outflowTransactionId, l.inflowTransactionId]));
+  return transactions
+    .filter(
+      (t) =>
+        t.id !== tx.id &&
+        !t.isRemoved &&
+        !t.supersededBy &&
+        !linked.has(t.id) &&
+        t.accountId !== tx.accountId &&
+        t.currency === tx.currency &&
+        t.amountMinor === -tx.amountMinor &&
+        Math.abs(diffDays(t.date, tx.date)) <= windowDays,
+    )
+    .sort((a, b) => Math.abs(diffDays(a.date, tx.date)) - Math.abs(diffDays(b.date, tx.date)) || a.id.localeCompare(b.id));
+}

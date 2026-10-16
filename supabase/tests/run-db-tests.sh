@@ -30,4 +30,7 @@ for f in migrations/*.sql; do
   echo "applying $f"
   psql -v ON_ERROR_STOP=1 -q -d "$DB" -f "$f"
 done
-psql -v ON_ERROR_STOP=1 -q -d "$DB" -f tests/rls.test.sql
+# Test files share one database and run in name order (rls.test.sql seeds fixtures).
+for f in tests/*.test.sql; do
+  psql -v ON_ERROR_STOP=1 -q -d "$DB" -f "$f"
+done

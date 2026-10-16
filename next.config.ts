@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   // Keep the dev-only indicator clear of the mobile bottom navigation.
   devIndicators: { position: "top-right" },
   reactStrictMode: true,
+  experimental: {
+    // CSV imports are posted to a server action (files are capped at 1 MB in code).
+    serverActions: { bodySizeLimit: "2mb" },
+  },
   turbopack: {
     rules: {
       "*.css": {

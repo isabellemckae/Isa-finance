@@ -4,8 +4,9 @@ A private, single-user, mobile-first **Personal CFO**. It consolidates balances 
 transactions, tracks budgets, and (in Phase 3) answers questions with an AI assistant
 whose numbers come only from deterministic, tested application code.
 
-> **Status: Phase 1 (foundation).** The dashboard runs on **clearly labeled fictional data**.
-> No bank is connected and no real financial data exists anywhere in this project.
+> **Status: Phase 2 complete (awaiting review).** Accounts, Activity and Budget are fully built.
+> Data comes from **clearly labeled fictional demo data** or from your own Supabase project.
+> No bank is connected. Plaid (Phase 4) and the AI Personal CFO (Phase 3) are not active.
 > See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for exactly what is built and what is planned.
 
 | Document | Contents |
@@ -19,15 +20,15 @@ whose numbers come only from deterministic, tested application code.
 
 | Area | State |
 |---|---|
-| Dashboard (safe-to-spend, cash, debt, net worth, income, spending, budget, bills, savings, cash flow, categories, accounts, activity, insights) | ✅ Working on **fictional data** |
-| Finance services: money, balances, classification, transfers, dedupe, budgets, safe-to-spend, debt and savings | ✅ Implemented, unit tested |
-| Database schema, Row Level Security, ownership constraints | ✅ Migrations + tests on local Postgres. **Not yet applied to a hosted project** |
-| Supabase Auth: password sign-in, TOTP MFA, allowlist, rate limits | ✅ Implemented. **Awaits your Supabase project for end-to-end verification** |
-| Security headers, nonce CSP, `no-store`, env validation | ✅ Implemented, tested |
-| Accounts, Activity, Budget pages | 🟡 Explicit "Planned for Phase 2" screens |
-| Personal CFO chat (OpenAI) | 🟡 Phase 3. The dashboard insight panel is rule-based, not AI |
-| Plaid (sandbox) | 🟡 Phase 4: designed, not implemented |
-| Supabase-backed data | 🟡 Phase 2. `DATA_SOURCE=supabase` fails loudly instead of showing demo data |
+| Dashboard (safe-to-spend, balances, income/spending, budget, bills, savings, cash flow, insights) | ✅ |
+| Accounts: groups, connection health, credit utilization, detail, nicknames, hide, manual accounts and balance history | ✅ |
+| Activity: search, filters, review queue, categories/notes/exclusions as overrides, transfer linking, CSV import with preview and dedupe, manual entry | ✅ |
+| Budget: monthly plan, planned vs actual, month-over-month, bills, income (incl. irregular), savings goals, debt payoff, paycheck allocation | ✅ |
+| Supabase-backed data (`DATA_SOURCE=supabase`) with RLS | ✅ Verified against local Postgres + PostgREST. **Not yet run against your hosted project** |
+| Demo mode with temporary in-memory edits | ✅ |
+| Supabase Auth: password sign-in, TOTP MFA, allowlist, rate limits | ✅ Implemented. **Needs your Supabase project for end-to-end verification** |
+| Personal CFO chat (OpenAI) | ⏸ Phase 3. The dashboard insight panel is rule-based |
+| Plaid (sandbox) linking, reconnect, disconnect | ⏸ Phase 4. Buttons are shown disabled |
 
 ## Local development
 
@@ -49,6 +50,7 @@ npm run check       # lint + typecheck + unit tests
 npm run build       # production build
 npm run test:e2e    # Playwright (starts its own dev server in demo mode)
 npm run test:db     # RLS tests: needs a local PostgreSQL superuser via PG* env vars
+npm run test:integration  # Supabase repository vs real PostgREST: needs Postgres + Docker
 ```
 
 `test:db` creates a throwaway database, emulates Supabase's roles and `auth` schema,
@@ -69,7 +71,9 @@ lists every variable.
    - Authentication → MFA: enable **TOTP**. Turn on leaked-password protection.
    - Set `AUTH_MODE=supabase`, `NEXT_PUBLIC_SUPABASE_URL`,
      `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `ALLOWED_USER_EMAIL`.
-     Keep `DATA_SOURCE=demo` until Phase 2.
+   - Set `DATA_SOURCE=supabase` to store your own data (manual accounts, CSV imports,
+     budgets, goals) in Supabase. Leave it as `demo` to keep previewing fictional data
+     behind real sign-in.
    - On first sign-in you'll be asked to enroll an authenticator app.
 2. **OpenAI** (Phase 3): an API key with a monthly usage limit set in the OpenAI dashboard.
 3. **Plaid** (Phase 4): sandbox `client_id` and sandbox secret only.
@@ -104,9 +108,11 @@ src/app/(auth)/         login, MFA setup/verify
 src/app/(app)/          authenticated shell + dashboard and section pages
 src/lib/finance/        deterministic calculation services (pure, tested)
 src/lib/auth/           access policy, data access layer, server actions
-src/lib/data/           repository interface + fictional demo dataset
+src/lib/data/           repository interface, demo store, Supabase repository
+src/lib/actions/        server actions (validated, authorized, audited)
 src/lib/security/       CSP, rate limiting
 supabase/migrations/    schema + RLS
-supabase/tests/         RLS / ownership tests
+supabase/tests/         RLS / ownership tests + integration seed
+scripts/                integration test runner (PostgREST in Docker)
 tests/e2e/              Playwright
 ```

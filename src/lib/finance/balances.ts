@@ -11,6 +11,8 @@ import type { Account, BalanceSnapshot, CurrencyCode, ISOTimestamp } from "./typ
  */
 
 export const DEFAULT_STALE_AFTER_HOURS = 24;
+/** Manually tracked balances are updated by hand, so they go stale after a month, not a day. */
+export const MANUAL_STALE_AFTER_HOURS = 31 * 24;
 
 export type BalanceFreshness = "fresh" | "stale" | "unavailable";
 
@@ -86,7 +88,8 @@ export function accountBalanceViews(
   const latest = latestSnapshots(snapshots);
   return accounts.map((account) => {
     const snapshot = latest.get(account.id) ?? null;
-    return { account, snapshot, freshness: balanceFreshness(snapshot, now, staleAfterHours) };
+    const threshold = account.source === "manual" ? Math.max(staleAfterHours, MANUAL_STALE_AFTER_HOURS) : staleAfterHours;
+    return { account, snapshot, freshness: balanceFreshness(snapshot, now, threshold) };
   });
 }
 
@@ -180,4 +183,12 @@ export function summarizeBalances(
     oldestBalanceAt: oldest,
     otherCurrencyAccountIds: otherCurrency,
   };
+}
+
+/** Credit utilization (owed / limit) in basis points; null when no limit is reported. */
+export function creditUtilizationBps(snapshot: BalanceSnapshot | null): number | null {
+  if (!snapshot || snapshot.creditLimitMinor === null || snapshot.creditLimitMinor <= 0 || snapshot.currentMinor === null) {
+    return null;
+  }
+  return Number((BigInt(Math.max(snapshot.currentMinor, 0)) * 10_000n) / BigInt(snapshot.creditLimitMinor));
 }

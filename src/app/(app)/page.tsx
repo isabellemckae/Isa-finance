@@ -25,7 +25,7 @@ export const metadata = { title: "Dashboard" };
 export default async function DashboardPage() {
   const user = await requireUser();
   const now = new Date();
-  const data = await getRepository(user).getFinancialData(user, now);
+  const data = await (await getRepository(user)).getFinancialData(now);
   const model = buildDashboard(data, now);
   const { balances, monthToDate, currency } = model;
   const whole = { wholeUnits: true } as const;

@@ -98,3 +98,12 @@ export function formatDate(
 export function formatMonth(date: ISODate, style: "short" | "long" = "long"): string {
   return formatDate(date, { month: style, year: "numeric" });
 }
+
+/** Parses a `YYYY-MM` URL param into the first day of that month, or returns the fallback. */
+export function monthFromParam(raw: unknown, fallback: ISODate): ISODate {
+  if (typeof raw === "string" && /^\d{4}-\d{2}$/.test(raw) && isISODate(`${raw}-01`)) {
+    const year = Number(raw.slice(0, 4));
+    if (year >= 2000 && year <= 2100) return `${raw}-01`;
+  }
+  return startOfMonth(fallback);
+}

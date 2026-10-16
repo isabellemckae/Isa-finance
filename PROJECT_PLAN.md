@@ -102,7 +102,7 @@ isa-finance/
 - Deliverables: this plan, `ARCHITECTURE.md`, `CLAUDE.md`, `docs/SECURITY.md`.
 - Acceptance: owner reviews architecture, threat model, and phase boundaries.
 
-### Phase 1 — Foundation (current)
+### Phase 1 — Foundation ✅
 Deliverables:
 1. Next.js scaffold, lint/typecheck/test tooling, CI-ready scripts.
 2. Full database schema + RLS migrations, with ownership tests on local Postgres.
@@ -123,7 +123,7 @@ Acceptance criteria:
 - Credit availability is never included in cash; pending and stale data are labeled.
 - No secret is readable from client bundles (`NEXT_PUBLIC_*` limited to Supabase URL + publishable key).
 
-### Phase 2 — Accounts, Transactions, Budget (demo data, then Supabase reads)
+### Phase 2 — Accounts, Transactions, Budget ✅ (awaiting owner review)
 - Accounts page (connection health, nicknames, masked ids, manual accounts).
 - Transactions page (filters, search, category edits via overrides, notes, exclusions,
   CSV import with dedupe preview).
@@ -155,7 +155,9 @@ Acceptance criteria:
 | Item | Status |
 |---|---|
 | Phase 0 planning docs | ✅ Complete |
-| Phase 1 — see checklist below | 🟡 In progress |
+| Phase 1 foundation | ✅ Complete, reviewed and approved by the owner |
+| Phase 2 accounts, transactions, budget, Supabase data | ✅ Complete, **awaiting owner review before Phase 3** |
+| Phase 3 Personal CFO | ⏸ Not started (needs approval) |
 
 Phase 1 checklist:
 
@@ -170,11 +172,41 @@ Phase 1 checklist:
       hand-written in `src/components/ui` because the shadcn registry was unreachable from the
       build environment. Same conventions (cva + `cn` + Radix Slot)
 - [x] Dashboard with fictional data
-- [ ] Owner review of Phase 1 (required before Phase 2)
+- [x] Owner review of Phase 1
 
-Phase 1 verification (latest run): ESLint clean · `tsc` clean · Vitest 103 tests passing ·
-RLS SQL suite passing on PostgreSQL 16 · Playwright 14 tests (mobile + desktop) passing ·
-`next build` succeeds.
+Phase 2 checklist:
+
+- [x] Migration `…000300_phase2_data_access.sql`: RLS-respecting latest-balance view and
+      SECURITY INVOKER helpers (manual account, idempotent CSV import, budget upsert/copy)
+- [x] RLS tests for every new write path (`supabase/tests/rls_phase2.test.sql`)
+- [x] Repository write API, implemented twice: in-memory demo store and Supabase (RLS)
+- [x] Supabase repository verified against a real PostgREST + Postgres stack with all
+      migrations (`npm run test:integration`), including cross-user isolation, a
+      wrong-user-binding check, forged-token rejection and >1000-row pagination
+- [x] Accounts: grouped list, summary, connection health, credit utilization, detail page,
+      nickname/hide, manual accounts (create, balance updates with history, delete)
+- [x] Transactions: search, type/date/account/category/status filters in the URL,
+      day grouping, review queue, edits as overrides (category, merchant, note, exclusion,
+      transfer mode), manual transfer linking/unlinking, CSV import with preview,
+      idempotent re-import and possible-duplicate detection, manual entry
+- [x] Budget: month plan with fixed/variable/savings/debt, planned vs actual, copy last
+      month, unbudgeted spending, month-over-month (day-for-day), bills, income (multiple +
+      irregular), savings goals, debt payoff comparison, paycheck allocation
+- [x] Settings: calculation preferences (safety buffer, expected income, time zone)
+- [x] Demo mode preserved; edits work in memory and are labeled temporary
+- [x] Mobile review on an emulated iPhone 15 viewport (light + dark)
+
+Not done in Phase 2 (by design): Plaid linking (Phase 4), the AI Personal CFO (Phase 3).
+Reconnect and disconnect buttons are visible but disabled, with an explanation.
+
+Phase 2 verification (latest run): ESLint clean · `tsc` clean · Vitest **164** unit tests ·
+RLS SQL suites (Phase 1 + Phase 2) passing on PostgreSQL 16 · **11** PostgREST integration
+tests · Playwright **67** tests (iPhone 15 emulation + desktop) · `next build` succeeds.
+
+Caveats: the iPhone runs use Chromium with iPhone 15 viewport, touch and user agent.
+WebKit/Safari is not installed in the build environment, so test on a real iPhone at
+review. Supabase was verified locally (Postgres 16 + PostgREST 12), not against your
+hosted project.
 
 _Status is updated at the end of each working session; see the git log for detail._
 
@@ -189,3 +221,6 @@ _Status is updated at the end of each working session; see the git log for detai
 | R5 | Sending financial data to OpenAI. | Data minimization: aggregates and truncated transaction lists only; no account numbers, tokens, or full names. Owner must accept OpenAI data-handling terms; consider zero-data-retention eligibility. |
 | R6 | Encryption key loss makes stored Plaid tokens unrecoverable. | Documented recovery: re-link items via Plaid Link (tokens are re-issuable). See `docs/SECURITY.md`. |
 | R7 | Repository originally provided (GetAgeFit-website) is public and unrelated. | ISA Finance lives in its own private repository. |
+| R8 | Demo-mode edits live in server memory, shared by everyone using that server, and reset on restart or each day. | Demo mode is local-only and refused in production. A banner and form notes say edits are temporary. |
+| R9 | Pages load the last 13 months of transactions per request; fine for one person, slower with years of history. | Add server-side filtering/pagination in SQL if history grows (Phase 4+). |
+| R10 | Supabase integration is verified against local PostgREST 12, not the hosted Supabase stack (Auth/GoTrue, newer PostgREST). | Run `npm run test:db` against the hosted project and smoke-test sign-in at review. |

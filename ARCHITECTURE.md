@@ -38,18 +38,32 @@ Personal CFO (AI agent). Threat model and key management: [`docs/SECURITY.md`](d
 
 ```
 page.tsx (Server Component)
-  └─ requireUser()                       src/lib/auth/dal.ts
-       └─ getRepository(user)            src/lib/data/index.ts
-            ├─ DemoRepository            fictional dataset (Phase 1)
-            └─ SupabaseRepository        RLS-scoped reads (Phase 2)
+  └─ loadPageData()                      src/lib/data/load.ts (React cache, once per request)
+       ├─ requireUser()                  src/lib/auth/dal.ts
+       └─ getRepository(user)            src/lib/data/index.ts → repository bound to user.id
+            ├─ DemoRepository            in-memory fictional dataset (demo mode)
+            └─ SupabaseRepository        user-JWT client, RLS + explicit user_id filters
                  └─ finance services     src/lib/finance/* (pure, tested)
+
+form → server action (src/lib/actions/*)
+  └─ zod validation (src/lib/forms.ts)
+       └─ runAction()                    requireUser → repository → audit → revalidatePath
+            └─ repository write API      overrides, links, manual records, plans, goals
 ```
 
-- `DATA_SOURCE=demo` (default) serves a deterministic, clearly labeled fictional dataset.
-- `DATA_SOURCE=supabase` is rejected with an explicit error until Phase 2 ships the
-  Supabase repository — there is no silent fallback to demo data.
-- Every repository method takes the authenticated `userId`; the Supabase implementation
-  additionally relies on RLS (defense in depth).
+- The repository interface (`src/lib/data/repository.ts`) has one read
+  (`getFinancialData`), one history read, and a narrow write API. Repositories are bound to
+  the authenticated user when created, so no method takes a user id.
+- `DATA_SOURCE=demo` uses `DemoRepository`. Fictional data is generated per day and edits
+  are applied in memory, so every screen can be previewed. Edits reset on restart.
+- `DATA_SOURCE=supabase` uses `SupabaseRepository` with the signed-in user's session
+  client. Rows are validated with Zod (`src/lib/data/supabase/rows.ts`), reads page through
+  PostgREST's 1000-row limit, and Postgres error codes map to user-safe messages. The
+  service-role key is not used.
+- Multi-step operations shared by both repositories live in `src/lib/data/operations.ts`
+  (post-import transfer detection, rejecting a transfer).
+- There is no silent fallback: a Supabase user is never shown demo data, and demo auth
+  can only be combined with demo data (config validation).
 
 ## 3. Database design
 
@@ -100,7 +114,7 @@ privileges. Every user-owned table carries `user_id uuid not null references aut
 | `webhook_events` | Plaid webhook idempotency log | **none** (service role only) |
 | `audit_events` | append-only security/audit log | select (own rows); insert via server; update/delete blocked by trigger |
 
-Key constraints (see `supabase/migrations/0001_initial_schema.sql`):
+Key constraints (see `supabase/migrations/20261016000100_initial_schema.sql`):
 
 - `transactions`: `unique (user_id, source, external_id)`; partial unique
   `(account_id, dedupe_hash)` for CSV imports; check `status in ('pending','posted')`.
@@ -129,7 +143,19 @@ Plus: `revoke all ... from anon`, column-level `grant update (...)`, no policies
 secret/webhook tables, and composite FKs for cross-table ownership. Tests in
 `supabase/tests/rls.test.sql` simulate two users and assert isolation for every table.
 
-### 3.4 New-user bootstrap
+### 3.4 Phase 2 helpers (`…000300_phase2_data_access.sql`)
+
+| Object | Purpose |
+|---|---|
+| `account_latest_balances` view | Latest snapshot per account; `security_invoker = true`, so RLS applies. |
+| `create_manual_account(...)` | Manual account and opening balance in one transaction. |
+| `import_transactions(account, batch, rows jsonb)` | CSV rows → `transactions` with `on conflict do nothing`. Idempotent through `(account_id, dedupe_hash)`; max 5000 rows. |
+| `ensure_budget`, `upsert_budget_allocation`, `copy_budget` | Month budgets created on demand; allocation upsert; copy last month without overwriting. |
+
+All are **SECURITY INVOKER** with `search_path = ''`, executable by `authenticated` only.
+They add atomicity, never privileges, and are covered by `supabase/tests/rls_phase2.test.sql`.
+
+### 3.5 New-user bootstrap
 
 `handle_new_user()` (security definer trigger on `auth.users`) creates the profile and
 seeds default categories. Public sign-ups must be **disabled** in Supabase; the app also
@@ -228,7 +254,7 @@ All implemented as pure functions in `src/lib/finance`, with unit tests.
 | Available cash | Σ `available` of depository accounts **where the institution provides it**; result flagged *partial* if any account lacks it. |
 | Credit card debt | Σ `current` (amount owed) of credit accounts. Credit limits and available credit are reported separately and **never** added to cash. |
 | Net worth | assets (depository + investment + manual assets) − liabilities (credit + loans). |
-| Staleness | a balance is *stale* when `as_of` is older than 24 h; stale and missing balances are listed in the result. |
+| Staleness | a synced balance is *stale* when `as_of` is older than 24 h (manual balances: 31 days); stale and missing balances are listed in the result. |
 
 ### 6.3 Transaction classification
 - Each transaction resolves an *effective* category = override → provider mapping → uncategorized.
@@ -258,7 +284,34 @@ and flagged as "unmatched transfer".
 
 ### 6.6 Budgets
 - Remaining per category = planned − actual (actual per §6.3, for the budget month).
-- Over-budget is reported as negative remaining, not clamped.
+- Savings and debt allocations measure money *moved* out of cash accounts in that
+  category (transfers, card payments), not spending.
+- Status: `not_started`, `on_track`, `near_limit` (≥ 90%), `at_plan` (exactly planned),
+  `over`. Over-budget is reported as negative remaining, not clamped.
+- Month-over-month: a month in progress is compared day for day with the same days of
+  the previous month. Past months are compared in full.
+- Planned income = Σ expected deposits with known amounts in the month. Irregular or
+  unknown-amount sources are listed separately and never guessed.
+
+### 6.6a Paycheck allocation
+For the next salary paycheck until the following one: bills due in that window, debt
+payments due in that window (max of planned and minimum), and an even share (monthly ÷
+paychecks this month, rounded half up) of essential variable budget (excluding categories
+already covered by bills), savings contributions, and flexible budget. The remainder is
+"unassigned"; a negative remainder is shown as a shortfall.
+
+### 6.6b CSV import
+Strict parser (quoted fields, CRLF, BOM). Columns are detected from headers (Date,
+Description, Amount, or Debit/Credit). Dates are accepted only as ISO or US formats, and
+amounts accept `$`, thousands separators, parentheses and trailing minus. Rows that can't
+be read are reported by line and skipped, never guessed. Re-import is idempotent through
+the §6.5 hash. Rows resembling bank-synced transactions are flagged and skipped unless the
+user opts in. The server re-parses the file on confirm rather than trusting rows from the
+browser, then runs transfer detection.
+
+### 6.6c Review queue
+A transaction needs review when it is uncategorized spending, an uncategorized inflow, a
+transfer-category leg with no match, or one side of an ambiguous transfer match.
 
 ### 6.7 Safe-to-spend
 ```

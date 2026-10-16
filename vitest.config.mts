@@ -15,6 +15,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    exclude: ["**/node_modules/**", "src/**/*.integration.test.ts"],
     coverage: { include: ["src/lib/**"], reporter: ["text", "html"] },
   },
 });

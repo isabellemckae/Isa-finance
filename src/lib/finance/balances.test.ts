@@ -56,6 +56,14 @@ describe("summarizeBalances", () => {
     expect(result.oldestBalanceAt).toBe("2026-10-13T12:00:00Z");
   });
 
+  it("gives manually tracked balances a monthly staleness window", () => {
+    const cash = account({ source: "manual", subtype: "cash" });
+    const tenDays = balance(cash.id, { currentMinor: 5_000, asOf: "2026-10-06T13:00:00Z" });
+    expect(summarizeBalances([cash], [tenDays], { now, currency: "USD" }).staleAccountIds).toEqual([]);
+    const twoMonths = balance(cash.id, { currentMinor: 5_000, asOf: "2026-08-10T13:00:00Z" });
+    expect(summarizeBalances([cash], [twoMonths], { now, currency: "USD" }).staleAccountIds).toEqual([cash.id]);
+  });
+
   it("computes net worth with loans and investments, and skips other currencies", () => {
     const savings = account({ subtype: "savings" });
     const brokerage = account({ type: "investment" });

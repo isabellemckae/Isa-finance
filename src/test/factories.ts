@@ -69,6 +69,7 @@ export function tx(accountId: string, overrides: Partial<Transaction> = {}): Tra
     description: "Purchase",
     merchantName: null,
     defaultCategoryId: null,
+    dedupeHash: null,
     isRemoved: false,
     supersededBy: null,
     ...overrides,
