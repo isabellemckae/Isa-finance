@@ -26,11 +26,11 @@ Threat model, controls, and key management. Applies to all phases.
 | **Information disclosure** | Secrets in client bundle | Only `NEXT_PUBLIC_SUPABASE_URL` / publishable key are public; secrets read via `server-only` `env.ts`. |
 | | Tokens in logs | Logging helper redacts known secret patterns; errors from Plaid are reduced to `error_code`. |
 | | Shared cache leaks data | `cacheComponents` off, `Cache-Control: private, no-store` on app routes. |
-| | Data sent to OpenAI | Minimized tool results; no masks beyond last 4; no tokens; documented in README. |
+| | Data sent to OpenAI | Only when `OPENAI_API_KEY` is set. Tool results are minimized (no account numbers beyond the last 4, no tokens, no internal ids, sanitized and truncated text, ≤ 25 transactions per search); requests use `store: false`; tool outputs are never persisted; provider errors are never shown. |
 | | XSS exfiltration | Nonce CSP with `strict-dynamic`, React escaping, no `dangerouslySetInnerHTML` with user data. |
 | | Clickjacking | `frame-ancestors 'none'`, `X-Frame-Options: DENY`. |
-| **Denial of service** | CFO cost abuse | Auth required, rate limits, token/iteration caps. |
-| **Elevation of privilege** | Prompt injection via merchant name ("ignore previous instructions…") | AI has read-only tools only, user id bound server-side, tool results delimited as data. |
+| **Denial of service** | CFO cost abuse | Auth + MFA, same-origin check, 8 requests/min, daily request and token caps in `ai_usage_daily`, 6 tool rounds / 12 calls / 900 output tokens per turn, 45 s timeout. Set a budget limit in the OpenAI dashboard too. |
+| **Elevation of privilege** | Prompt injection via merchant name ("ignore previous instructions…") | AI has read-only tools only over a frozen snapshot, user bound server-side, no tool parameter selects a user or id, tool text sanitized and marked untrusted. Amounts in answers are checked against tool results and unverified ones are flagged. Tested in `src/lib/cfo/*.test.ts`. |
 | | Service role misuse | Service-role client only in `src/lib/supabase/admin.ts` (`server-only`), used only by Plaid sync/webhook code. |
 
 ## 3. Security headers

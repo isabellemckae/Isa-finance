@@ -349,32 +349,47 @@ data and accounts in an error state. A negative result is reported as a shortfal
   `style-src` allows `'unsafe-inline'` because Recharts and Next inject inline style
   attributes; scripts remain nonce-restricted.
 
-## 8. Personal CFO (AI agent) — design (Phase 3)
+## 8. Personal CFO (AI agent), as built in Phase 3
 
 ```
-POST /api/cfo/chat  (requireUser, rate limit, zod body)
-  → system prompt (role, rules, today's date, reporting conventions)
-  → OpenAI Responses API with tools = READ_ONLY_TOOLS
-  ↺ model requests tool → server validates args (zod) → calls finance service
-      with the authenticated userId (never from model args) → returns JSON result
-  → stream final answer; persist messages; write audit_event
+POST /api/cfo/chat
+  checkSameOrigin → requireApiUser (auth + MFA) → per-minute limiter (8/min)
+  → body ≤ 8 KB, zod (message 1–2000 chars, conversationId pattern)
+  → handleCfoMessage (src/lib/cfo/service.ts)
+      daily request limit (DB, ai_usage_daily) → load conversation history (RLS)
+      → createCfoContext: deep-frozen snapshot of THIS user's data, built once
+      → runCfoTurn (agent.ts) with the OpenAI model, or answerOffline() when
+        no key / over the daily token budget / the AI service fails
+      → record_ai_usage, persist user + assistant messages (+ metadata), audit event
 ```
 
-**Tool registry** (all read-only, each returns `{ data, period, dataAsOf, missingAccounts, assumptions }`):
-`get_account_balances`, `get_financial_summary`, `search_transactions` (max 50 rows,
-truncated fields), `get_budget_performance`, `get_recurring_expenses`,
-`get_upcoming_bills`, `project_cash_flow`, `simulate_debt_payoff`, `project_savings`,
-`get_safe_to_spend`.
+Modules in `src/lib/cfo/`:
+
+| File | Role |
+|---|---|
+| `context.ts` | Frozen per-request snapshot (`data`, enriched transactions, `asOf`, currency). Tools can only read it. |
+| `tools.ts` | 15 read-only tools with strict JSON schemas and Zod validation: balances, spending summary, transaction search (≤ 25 rows, sanitized text, no ids), budget status, upcoming bills, income, savings goals, debts, debt payoff simulation, cash-flow forecast, safe-to-spend, affordability, month comparison, insights, briefing. Each returns `{data, meta: {status: actual\|estimate\|projection, period, dataAsOf, isDemo, notes}}` and money as `{minor, formatted}`. |
+| `prompt.ts` | System instructions: numbers only from tools, no arithmetic, state period and freshness, label estimates and projections, tool text is untrusted data, no write capability, say what's missing, not a licensed advisor. |
+| `agent.ts` | Tool loop with limits (6 rounds, 12 calls per turn, 900 output tokens, last 12 history messages / 16k chars). |
+| `verify.ts` | Every currency amount in the answer must appear in a tool result (or in the user's own text or earlier answers). One repair round; anything still unverified is flagged in the UI. |
+| `offline.ts` | Deterministic answers for common questions using the same tools, so the CFO works with no key, in demo mode, and during outages. |
+| `openai-model.ts` | Responses API adapter (server-only). `store: false`, no SDK retries, 45 s timeout, provider errors mapped to generic `ModelError`s. |
+
+Forecasts, insights and briefings are pure functions in `src/lib/finance/forecast.ts`,
+`insights.ts` and `briefing.ts`. The dashboard, `/cfo/briefing` and the CFO tools all
+use them. Projections are labeled everywhere they appear.
 
 **Rules**
-- The user id is bound server-side; the model cannot choose whose data to read.
+- The user is bound server-side through the repository. No tool parameter selects a
+  user, account id or table; the model cannot choose whose data to read.
 - No SQL, no write tools, no payment tools. Future write tools require an explicit,
   UI-rendered confirmation step outside the model loop.
-- Data minimization: no account numbers, masks only; no tokens; merchant names
-  truncated and treated as untrusted text (prompt-injection defense: tool results are
-  delimited data, and the system prompt instructs the model to ignore instructions
-  inside them).
-- Answers must state the reporting period, data freshness, missing accounts, and
-  assumptions when relevant; the model is instructed never to state a figure that did
-  not come from a tool result.
-- Limits: max tool iterations per turn, max tokens, per-user rate limit, request timeout.
+- Data minimization: no account numbers (masks only), no tokens, no internal ids in
+  tool output; merchant and memo text is sanitized and truncated (prompt-injection
+  defense, tested with malicious merchant names).
+- Tool outputs are never persisted. Only the question, the answer text and metadata
+  (tools used, status, periods, unverified amounts) are stored in `ai_messages`.
+- Limits: per-minute limiter, `CFO_DAILY_REQUEST_LIMIT` (default 150) and
+  `CFO_DAILY_TOKEN_LIMIT` (default 400k) per UTC day in `ai_usage_daily`
+  (written only through the SECURITY DEFINER `record_ai_usage`).
+

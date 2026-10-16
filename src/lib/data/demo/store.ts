@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { todayInTimeZone } from "@/lib/finance/dates";
 import type { BalanceSnapshot, FinancialData, Transaction } from "@/lib/finance/types";
-import { RepositoryError, type FinanceRepository } from "../repository";
+import {
+  RepositoryError,
+  type AiUsage,
+  type Conversation,
+  type ConversationSummary,
+  type FinanceRepository,
+  type NewMessage,
+} from "../repository";
 import { buildDemoData, DEMO_TIMEZONE } from "./dataset";
 
 /**
@@ -15,18 +22,23 @@ interface DemoState {
   day: string;
   data: FinancialData;
   history: BalanceSnapshot[];
+  conversations: Conversation[];
+  usage: Map<string, AiUsage>;
 }
 
-let shared: DemoState | null = null;
+// Kept on globalThis: Next bundles route handlers and pages as separate module
+// instances, and both must see the same in-memory demo store.
+const STORE_KEY = Symbol.for("isa-finance.demo-store");
+const holder = globalThis as typeof globalThis & { [STORE_KEY]?: DemoState };
 
 function freshState(now: Date): DemoState {
   const data = buildDemoData(now);
-  return { day: todayInTimeZone(DEMO_TIMEZONE, now), data, history: [...data.balances] };
+  return { day: todayInTimeZone(DEMO_TIMEZONE, now), data, history: [...data.balances], conversations: [], usage: new Map() };
 }
 
 /** Test hook: start from a clean dataset. */
 export function resetDemoStore(now: Date = new Date()): void {
-  shared = freshState(now);
+  holder[STORE_KEY] = freshState(now);
 }
 
 export class DemoRepository implements FinanceRepository {
@@ -37,8 +49,9 @@ export class DemoRepository implements FinanceRepository {
 
   private state(now: Date = new Date()): DemoState {
     if (this.injected) return this.injected;
-    if (!shared || shared.day !== todayInTimeZone(DEMO_TIMEZONE, now)) shared = freshState(now);
-    return shared;
+    const shared = holder[STORE_KEY];
+    if (shared && shared.day === todayInTimeZone(DEMO_TIMEZONE, now)) return shared;
+    return (holder[STORE_KEY] = freshState(now));
   }
 
   static withFreshState(now: Date): DemoRepository {
@@ -351,6 +364,65 @@ export class DemoRepository implements FinanceRepository {
 
   /** Demo mode keeps no audit trail: nothing real happens. */
   async audit(): Promise<void> {}
+
+  // ---------------------------------------------------------------------------
+  // Personal CFO conversations & usage (in memory)
+  // ---------------------------------------------------------------------------
+
+  private conversation(id: string): Conversation {
+    const c = this.state().conversations.find((x) => x.id === id);
+    if (!c) throw new RepositoryError("not_found", "Conversation not found.");
+    return c;
+  }
+
+  async listConversations(limit: number): Promise<ConversationSummary[]> {
+    return [...this.state().conversations]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, limit)
+      .map(({ id, title, updatedAt }) => ({ id, title, updatedAt }));
+  }
+
+  async getConversation(id: string): Promise<Conversation | null> {
+    const c = this.state().conversations.find((x) => x.id === id);
+    return c ? structuredClone(c) : null;
+  }
+
+  async createConversation(title: string): Promise<string> {
+    const id = `demo-conv-${randomUUID()}`;
+    this.state().conversations.push({ id, title, updatedAt: new Date().toISOString(), messages: [] });
+    return id;
+  }
+
+  async appendMessages(conversationId: string, messages: NewMessage[]): Promise<void> {
+    const c = this.conversation(conversationId);
+    for (const m of messages) {
+      c.messages.push({
+        id: `demo-msg-${randomUUID()}`,
+        role: m.role,
+        content: m.content,
+        metadata: m.metadata ?? {},
+        createdAt: new Date().toISOString(),
+      });
+    }
+    c.updatedAt = new Date().toISOString();
+  }
+
+  async deleteConversation(id: string): Promise<void> {
+    this.conversation(id);
+    const s = this.state();
+    s.conversations = s.conversations.filter((c) => c.id !== id);
+  }
+
+  async getAiUsageToday(now: Date): Promise<AiUsage> {
+    return { ...(this.state().usage.get(now.toISOString().slice(0, 10)) ?? { requests: 0, inputTokens: 0, outputTokens: 0 }) };
+  }
+
+  async recordAiUsage(inputTokens: number, outputTokens: number): Promise<void> {
+    const day = new Date().toISOString().slice(0, 10);
+    const usage = this.state().usage;
+    const u = usage.get(day) ?? { requests: 0, inputTokens: 0, outputTokens: 0 };
+    usage.set(day, { requests: u.requests + 1, inputTokens: u.inputTokens + inputTokens, outputTokens: u.outputTokens + outputTokens });
+  }
 }
 
 export function availableFor(type: string, currentMinor: number, creditLimitMinor: number | null): number | null {

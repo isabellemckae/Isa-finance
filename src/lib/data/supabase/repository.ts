@@ -2,7 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
 import { addMonths, startOfMonth, todayInTimeZone } from "@/lib/finance/dates";
 import type { BalanceSnapshot, FinancialData, TransactionOverride } from "@/lib/finance/types";
-import { RepositoryError, type FinanceRepository } from "../repository";
+import {
+  RepositoryError,
+  type AiUsage,
+  type Conversation,
+  type ConversationSummary,
+  type FinanceRepository,
+  type NewMessage,
+} from "../repository";
 import * as rows from "./rows";
 
 /**
@@ -446,5 +453,85 @@ export class SupabaseRepository implements FinanceRepository {
       p_entity_id: entityId,
     });
     if (error) console.error("audit_event_failed", { action, code: error.code });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Personal CFO conversations & usage
+  // ---------------------------------------------------------------------------
+
+  async listConversations(limit: number): Promise<ConversationSummary[]> {
+    const { data, error } = await this.table("ai_conversations")
+      .select("id, title, updated_at")
+      .eq("user_id", this.userId)
+      .order("updated_at", { ascending: false })
+      .limit(limit);
+    if (error) throw toRepositoryError(error);
+    return parseAll(rows.conversationRow, data).map((c) => ({ id: c.id, title: c.title ?? "Conversation", updatedAt: c.updated_at }));
+  }
+
+  async getConversation(id: string): Promise<Conversation | null> {
+    if (!UUID_RE.test(id)) return null;
+    const { data, error } = await this.table("ai_conversations")
+      .select("id, title, updated_at, ai_messages(id, role, content, metadata, created_at)")
+      .eq("user_id", this.userId)
+      .eq("id", id)
+      .order("created_at", { referencedTable: "ai_messages", ascending: true })
+      .maybeSingle();
+    if (error) throw toRepositoryError(error);
+    if (!data) return null;
+    const c = parseAll(rows.conversationWithMessagesRow, [data])[0];
+    return {
+      id: c.id,
+      title: c.title ?? "Conversation",
+      updatedAt: c.updated_at,
+      messages: c.ai_messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content, metadata: m.metadata, createdAt: m.created_at })),
+    };
+  }
+
+  async createConversation(title: string): Promise<string> {
+    const { data, error } = await this.table("ai_conversations")
+      .insert({ user_id: this.userId, title })
+      .select("id")
+      .single();
+    if (error) throw toRepositoryError(error);
+    return String(data.id);
+  }
+
+  async appendMessages(conversationId: string, messages: NewMessage[]): Promise<void> {
+    await this.requireRow("ai_conversations", conversationId);
+    await this.check(
+      this.table("ai_messages").insert(
+        messages.map((m) => ({
+          user_id: this.userId,
+          conversation_id: conversationId,
+          role: m.role,
+          content: m.content,
+          metadata: m.metadata ?? {},
+        })),
+      ),
+    );
+  }
+
+  async deleteConversation(id: string): Promise<void> {
+    await this.del("ai_conversations", id);
+  }
+
+  async getAiUsageToday(now: Date): Promise<AiUsage> {
+    const { data, error } = await this.table("ai_usage_daily")
+      .select("request_count, input_tokens, output_tokens")
+      .eq("user_id", this.userId)
+      .eq("day", now.toISOString().slice(0, 10))
+      .maybeSingle();
+    if (error) throw toRepositoryError(error);
+    if (!data) return { requests: 0, inputTokens: 0, outputTokens: 0 };
+    const u = parseAll(rows.usageRow, [data])[0];
+    return { requests: u.request_count, inputTokens: u.input_tokens, outputTokens: u.output_tokens };
+  }
+
+  async recordAiUsage(inputTokens: number, outputTokens: number): Promise<void> {
+    const { error } = await this.db.rpc("record_ai_usage", { p_input_tokens: inputTokens, p_output_tokens: outputTokens });
+    if (error) throw toRepositoryError(error);
   }
 }

@@ -156,6 +156,22 @@ export const debtGoalRow = z.object({
   payment_due_day: z.number().int().nullable(),
 });
 
+export const conversationRow = z.object({ id: uuid, title: z.string().nullable(), updated_at: timestamp });
+
+export const conversationWithMessagesRow = conversationRow.extend({
+  ai_messages: z.array(
+    z.object({
+      id: uuid,
+      role: z.enum(["user", "assistant", "tool"]),
+      content: z.string(),
+      metadata: z.record(z.string(), z.unknown()),
+      created_at: timestamp,
+    }),
+  ),
+});
+
+export const usageRow = z.object({ request_count: z.number().int(), input_tokens: z.number().int(), output_tokens: z.number().int() });
+
 // Column lists kept next to the schemas so selects and validation stay in sync.
 export const SELECT = {
   profile: "display_name, base_currency, timezone, safety_buffer_minor, include_expected_income",

@@ -13,6 +13,8 @@ const optionalString = z
   .transform((v) => (v === "" ? undefined : v))
   .optional();
 
+const blankToUndefined = (v: unknown) => (v === "" ? undefined : v);
+
 const booleanFlag = (defaultValue: boolean) =>
   z
     .enum(["true", "false", "1", "0", ""])
@@ -35,6 +37,8 @@ export const envSchema = z
 
     OPENAI_API_KEY: optionalString,
     OPENAI_MODEL: optionalString,
+    CFO_DAILY_REQUEST_LIMIT: z.preprocess(blankToUndefined, z.coerce.number().int().min(1).max(10_000).default(150)),
+    CFO_DAILY_TOKEN_LIMIT: z.preprocess(blankToUndefined, z.coerce.number().int().min(1_000).max(50_000_000).default(400_000)),
 
     PLAID_CLIENT_ID: optionalString,
     PLAID_SECRET: optionalString,

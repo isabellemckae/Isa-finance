@@ -71,19 +71,30 @@ export interface SafeToSpendResult {
   confidence: "calculated" | "estimated";
 }
 
-export function computeSafeToSpend(input: SafeToSpendInput): SafeToSpendResult {
-  const { asOf, horizonEnd, currency } = input;
-  const fmt = (m: number) => formatMoney(m, currency);
-  const assumptions: string[] = [];
-  const warnings: string[] = [];
-  const components: SafeToSpendComponent[] = [];
+export interface SpendableCash {
+  amountMinor: number;
+  usedCurrentFallback: boolean;
+  fallbackAccountIds: Set<string>;
+  savingsExcluded: string[];
+  warnings: string[];
+}
 
-  // 1. Spendable cash from depository accounts in a healthy state.
-  let spendable = 0;
+/**
+ * Cash you can spend today: available balances of checking/cash accounts with a
+ * healthy connection. Savings-type accounts and credit availability are excluded.
+ */
+export function spendableCash(
+  accounts: readonly Account[],
+  balances: readonly BalanceSnapshot[],
+  now: Date,
+  currency: CurrencyCode,
+): SpendableCash {
+  let amount = 0;
   let usedCurrentFallback = false;
   const fallbackAccountIds = new Set<string>();
   const savingsExcluded: string[] = [];
-  for (const view of accountBalanceViews(input.accounts, input.balances, input.now)) {
+  const warnings: string[] = [];
+  for (const view of accountBalanceViews(accounts, balances, now)) {
     const { account, snapshot, freshness } = view;
     if (account.type !== "depository" || account.currency !== currency) continue;
     const label = account.nickname ?? account.name;
@@ -103,13 +114,30 @@ export function computeSafeToSpend(input: SafeToSpendInput): SafeToSpendResult {
       warnings.push(`${label} balance is out of date (as of ${new Date(snapshot.asOf).toUTCString()}).`);
     }
     if (snapshot.availableMinor !== null) {
-      spendable = addMinor(spendable, snapshot.availableMinor);
+      amount = addMinor(amount, snapshot.availableMinor);
     } else {
-      spendable = addMinor(spendable, snapshot.currentMinor ?? 0);
+      amount = addMinor(amount, snapshot.currentMinor ?? 0);
       usedCurrentFallback = true;
       fallbackAccountIds.add(account.id);
     }
   }
+  return { amountMinor: amount, usedCurrentFallback, fallbackAccountIds, savingsExcluded, warnings };
+}
+
+export function computeSafeToSpend(input: SafeToSpendInput): SafeToSpendResult {
+  const { asOf, horizonEnd, currency } = input;
+  const fmt = (m: number) => formatMoney(m, currency);
+  const assumptions: string[] = [];
+  const warnings: string[] = [];
+  const components: SafeToSpendComponent[] = [];
+
+  // 1. Spendable cash from depository accounts in a healthy state.
+  const cash = spendableCash(input.accounts, input.balances, input.now, currency);
+  const spendable = cash.amountMinor;
+  const usedCurrentFallback = cash.usedCurrentFallback;
+  const fallbackAccountIds = cash.fallbackAccountIds;
+  const savingsExcluded = cash.savingsExcluded;
+  warnings.push(...cash.warnings);
   components.push({
     key: "spendable_cash",
     label: "Spendable cash",

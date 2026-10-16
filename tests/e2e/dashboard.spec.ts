@@ -36,7 +36,7 @@ test.describe("dashboard (demo mode)", () => {
     expect(headers["x-powered-by"]).toBeUndefined();
   });
 
-  test("navigates between sections and marks unbuilt pages explicitly", async ({ page }) => {
+  test("navigates between sections", async ({ page }) => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: "Primary" }).filter({ visible: true });
     await nav.getByRole("link", { name: "Budget" }).click();
@@ -44,7 +44,7 @@ test.describe("dashboard (demo mode)", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Budget" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Budget" })).toHaveAttribute("aria-current", "page");
     await nav.getByRole("link", { name: "CFO" }).click();
-    await expect(page.getByText("Planned for Phase 3")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Personal CFO" })).toBeVisible();
   });
 
   test("has no horizontal overflow", async ({ page }) => {

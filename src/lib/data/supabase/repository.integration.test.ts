@@ -240,3 +240,50 @@ describe.skipIf(!URL || !SECRET)("SupabaseRepository against PostgREST + RLS", (
     });
   });
 });
+
+describe.skipIf(!URL || !SECRET)("Personal CFO persistence against PostgREST + RLS", () => {
+  const a = () => repoFor(USER_A);
+  const b = () => repoFor(USER_B);
+
+  it("stores conversations with metadata, newest first", async () => {
+    const first = await a().createConversation("Groceries");
+    const second = await a().createConversation("Bills");
+    await a().appendMessages(first, [
+      { role: "user", content: "How much on groceries?" },
+      { role: "assistant", content: "You spent $412.50.", metadata: { mode: "offline", toolCalls: [{ name: "get_spending_summary", ok: true }] } },
+    ]);
+    const list = await a().listConversations(10);
+    expect(list.map((c) => c.id).slice(0, 2)).toEqual([first, second]);
+    const convo = await a().getConversation(first);
+    expect(convo?.messages.map((m) => [m.role, m.content])).toEqual([
+      ["user", "How much on groceries?"],
+      ["assistant", "You spent $412.50."],
+    ]);
+    expect(convo?.messages[1].metadata).toMatchObject({ mode: "offline" });
+    await a().deleteConversation(second);
+    expect((await a().listConversations(10)).some((c) => c.id === second)).toBe(false);
+  });
+
+  it("keeps conversations private to their owner", async () => {
+    const id = await a().createConversation("Private");
+    await a().appendMessages(id, [{ role: "user", content: "secret question" }]);
+    expect(await b().getConversation(id)).toBeNull();
+    expect((await b().listConversations(50)).some((c) => c.id === id)).toBe(false);
+    await rejects(b().appendMessages(id, [{ role: "user", content: "intrusion" }]), "not_found");
+    await rejects(b().deleteConversation(id), "not_found");
+    expect((await a().getConversation(id))?.messages).toHaveLength(1);
+    expect(await a().getConversation("not-a-uuid")).toBeNull();
+  });
+
+  it("counts usage per user and per day", async () => {
+    const before = await a().getAiUsageToday(new Date());
+    await a().recordAiUsage(1_000, 200);
+    await a().recordAiUsage(500, 100);
+    const after = await a().getAiUsageToday(new Date());
+    expect(after.requests - before.requests).toBe(2);
+    expect(after.inputTokens - before.inputTokens).toBe(1_500);
+    expect(after.outputTokens - before.outputTokens).toBe(300);
+    expect((await b().getAiUsageToday(new Date())).requests).toBe(0);
+    await rejects(a().recordAiUsage(-1, 0), "invalid");
+  });
+});

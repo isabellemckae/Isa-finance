@@ -131,3 +131,33 @@ describe("transfer link validation", () => {
     expect(transferCandidates(out, data.transactions, []).map((t) => t.id)).toContain(inn.id);
   });
 });
+
+describe("DemoRepository CFO persistence", () => {
+  it("stores conversations, lists newest first, and deletes", async () => {
+    const repo = fresh();
+    const a = await repo.createConversation("First");
+    const b = await repo.createConversation("Second");
+    await new Promise((r) => setTimeout(r, 5));
+    await repo.appendMessages(a, [{ role: "user", content: "hi" }, { role: "assistant", content: "hello", metadata: { mode: "offline" } }]);
+    expect((await repo.listConversations(10)).map((c) => c.id)).toEqual([a, b]);
+    expect((await repo.getConversation(a))?.messages.map((m) => m.content)).toEqual(["hi", "hello"]);
+    await repo.deleteConversation(b);
+    expect(await repo.getConversation(b)).toBeNull();
+    expect(await code(repo.appendMessages(b, [{ role: "user", content: "x" }]))).toBe("not_found");
+  });
+
+  it("returns copies of conversations", async () => {
+    const repo = fresh();
+    const id = await repo.createConversation("Copy");
+    const c = await repo.getConversation(id);
+    c!.messages.push({ id: "x", role: "user", content: "tamper", metadata: {}, createdAt: "" });
+    expect((await repo.getConversation(id))?.messages).toHaveLength(0);
+  });
+
+  it("accumulates usage for the day", async () => {
+    const repo = fresh();
+    await repo.recordAiUsage(100, 20);
+    await repo.recordAiUsage(50, 10);
+    expect(await repo.getAiUsageToday(new Date())).toEqual({ requests: 2, inputTokens: 150, outputTokens: 30 });
+  });
+});

@@ -1,12 +1,13 @@
 # ISA Finance
 
 A private, single-user, mobile-first **Personal CFO**. It consolidates balances and
-transactions, tracks budgets, and (in Phase 3) answers questions with an AI assistant
-whose numbers come only from deterministic, tested application code.
+transactions, tracks budgets, and answers questions with an AI assistant whose numbers
+come only from deterministic, tested application code.
 
-> **Status: Phase 2 complete (awaiting review).** Accounts, Activity and Budget are fully built.
+> **Status: Phase 3 complete.** Accounts, Activity, Budget and the Personal CFO are built.
 > Data comes from **clearly labeled fictional demo data** or from your own Supabase project.
-> No bank is connected. Plaid (Phase 4) and the AI Personal CFO (Phase 3) are not active.
+> No bank is connected. The CFO uses OpenAI only when you set `OPENAI_API_KEY`; without
+> it, it gives calculated (non-AI) answers. Plaid (Phase 4) is sandbox-only.
 > See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) for exactly what is built and what is planned.
 
 | Document | Contents |
@@ -27,7 +28,8 @@ whose numbers come only from deterministic, tested application code.
 | Supabase-backed data (`DATA_SOURCE=supabase`) with RLS | ✅ Verified against local Postgres + PostgREST. **Not yet run against your hosted project** |
 | Demo mode with temporary in-memory edits | ✅ |
 | Supabase Auth: password sign-in, TOTP MFA, allowlist, rate limits | ✅ Implemented. **Needs your Supabase project for end-to-end verification** |
-| Personal CFO chat (OpenAI) | ⏸ Phase 3. The dashboard insight panel is rule-based |
+| Personal CFO chat: 15 read-only tools, conversation history, follow-ups, verified amounts, offline fallback | ✅ Calculated answers work today. **AI answers need your OpenAI key** |
+| Proactive insights (unusual or duplicate charges, spikes, low-cash forecast, budget, bills, savings) and weekly/monthly briefings | ✅ |
 | Plaid (sandbox) linking, reconnect, disconnect | ⏸ Phase 4. Buttons are shown disabled |
 
 ## Local development
@@ -75,7 +77,12 @@ lists every variable.
      budgets, goals) in Supabase. Leave it as `demo` to keep previewing fictional data
      behind real sign-in.
    - On first sign-in you'll be asked to enroll an authenticator app.
-2. **OpenAI** (Phase 3): an API key with a monthly usage limit set in the OpenAI dashboard.
+2. **OpenAI** (Personal CFO, optional): create a project-scoped API key at
+   platform.openai.com and set a monthly budget limit on that project. Put it in
+   `OPENAI_API_KEY` (`.env.local`, or your host's encrypted settings). Optionally set
+   `OPENAI_MODEL`, `CFO_DAILY_REQUEST_LIMIT` and `CFO_DAILY_TOKEN_LIMIT`. Requests are
+   sent with `store: false`. Review OpenAI's API data-usage policy, and ask about
+   zero-data-retention if you want it.
 3. **Plaid** (Phase 4): sandbox `client_id` and sandbox secret only.
 4. **Encryption keyring** (Phase 4): generated locally, as described in `docs/SECURITY.md`.
 

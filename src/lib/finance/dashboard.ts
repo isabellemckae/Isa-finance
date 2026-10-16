@@ -1,11 +1,12 @@
-import { addDays, endOfMonth, formatDate, startOfMonth, todayInTimeZone } from "./dates";
-import { addMinor, formatMoney } from "./money";
+import { addDays, endOfMonth, startOfMonth, todayInTimeZone } from "./dates";
+import { addMinor } from "./money";
 import { accountBalanceViews, summarizeBalances, type AccountBalanceView, type BalanceSummary } from "./balances";
 import { enrichTransactions, summarizePeriod, type EnrichedTransaction, type PeriodSummary } from "./classification";
 import { computeBudgetPerformance, type BudgetPerformance } from "./budget";
 import { computeSafeToSpend, type SafeToSpendResult } from "./safe-to-spend";
 import { expectedIncome, upcomingBills, type BillOccurrence } from "./schedule";
-import { categoryChangesMonthToDate, monthlyCashFlow, type CashFlowPoint } from "./cashflow";
+import { monthlyCashFlow, type CashFlowPoint } from "./cashflow";
+import { buildProactiveInsights, type ProactiveInsight } from "./insights";
 import { savingsProgress, type SavingsProgress } from "./goals";
 import type { CurrencyCode, FinancialData, ISODate, ISOTimestamp } from "./types";
 
@@ -14,12 +15,7 @@ import type { CurrencyCode, FinancialData, ISODate, ISOTimestamp } from "./types
  * what this returns, and the Personal CFO (Phase 3) will reuse the same building blocks.
  */
 
-export interface Insight {
-  id: string;
-  tone: "positive" | "neutral" | "attention";
-  title: string;
-  body: string;
-}
+export type Insight = ProactiveInsight;
 
 export interface DashboardModel {
   isDemo: boolean;
@@ -110,88 +106,6 @@ export function buildDashboard(data: FinancialData, now: Date): DashboardModel {
     sync: { latestSuccessAt: syncTimes.at(-1) ?? null, oldestSuccessAt: syncTimes[0] ?? null },
     insights: [],
   };
-  model.insights = buildInsights(model, transactions);
+  model.insights = buildProactiveInsights({ data, transactions, now, asOf, limit: 4 });
   return model;
-}
-
-/** Rule-based insights computed from the model. Not AI-generated. */
-export function buildInsights(model: DashboardModel, transactions: readonly EnrichedTransaction[]): Insight[] {
-  const fmt = (m: number) => formatMoney(m, model.currency, { wholeUnits: true });
-  const insights: Insight[] = [];
-
-  const unhealthy = model.balances.unhealthyAccountIds.length;
-  const stale = model.balances.staleAccountIds.length;
-  if (unhealthy > 0 || stale > 0) {
-    insights.push({
-      id: "data-quality",
-      tone: "attention",
-      title: "Some balances need attention",
-      body: [
-        unhealthy ? `${unhealthy} account${unhealthy === 1 ? "" : "s"} need${unhealthy === 1 ? "s" : ""} reconnecting.` : "",
-        stale ? `${stale} balance${stale === 1 ? " is" : "s are"} more than a day old.` : "",
-        "Figures that rely on them are estimates.",
-      ]
-        .filter(Boolean)
-        .join(" "),
-    });
-  }
-
-  if (model.budget) {
-    const over = model.budget.lines.filter((l) => l.status === "over");
-    const near = model.budget.lines.filter((l) => l.status === "near_limit");
-    if (over.length > 0) {
-      const worst = [...over].sort((a, b) => a.remainingMinor - b.remainingMinor)[0];
-      insights.push({
-        id: "budget-over",
-        tone: "attention",
-        title: `${worst.name} is over budget`,
-        body: `You've spent ${fmt(worst.actualMinor)} of ${fmt(worst.plannedMinor)} planned, ${fmt(-worst.remainingMinor)} over.${
-          over.length > 1 ? ` ${over.length - 1} other categor${over.length === 2 ? "y is" : "ies are"} also over.` : ""
-        }`,
-      });
-    } else if (near.length > 0) {
-      insights.push({
-        id: "budget-near",
-        tone: "neutral",
-        title: `${near[0].name} is close to its limit`,
-        body: `${fmt(near[0].remainingMinor)} left of ${fmt(near[0].plannedMinor)} for the rest of the month.`,
-      });
-    }
-  }
-
-  const changes = categoryChangesMonthToDate(transactions, model.asOf);
-  const biggest = changes[0];
-  if (biggest && biggest.changeMinor > 0 && biggest.previousMinor > 0) {
-    insights.push({
-      id: "category-increase",
-      tone: "neutral",
-      title: `${biggest.name} spending is up`,
-      body: `${fmt(biggest.currentMinor)} so far this month vs ${fmt(biggest.previousMinor)} by the same day last month.`,
-    });
-  }
-
-  if (model.upcomingBills.length > 0) {
-    const next = model.upcomingBills[0];
-    insights.push({
-      id: "bills",
-      tone: "neutral",
-      title: `${model.upcomingBills.length} bill${model.upcomingBills.length === 1 ? "" : "s"} in the next ${UPCOMING_BILLS_DAYS} days`,
-      body: `${fmt(model.upcomingBillsTotalMinor)} in total. Next: ${next.name} on ${formatDate(next.dueDate)}.`,
-    });
-  }
-
-  const goal = [...model.savings].sort((a, b) => b.progressBps - a.progressBps)[0];
-  if (goal && goal.progressBps > 0) {
-    insights.push({
-      id: "savings",
-      tone: "positive",
-      title: `${goal.name} is ${Math.floor(goal.progressBps / 100)}% funded`,
-      body:
-        goal.projectedDate && goal.remainingMinor > 0
-          ? `At your planned pace you'll reach ${fmt(goal.targetMinor)} around ${formatDate(goal.projectedDate, { month: "long", year: "numeric" })}.`
-          : `${fmt(goal.remainingMinor)} to go.`,
-    });
-  }
-
-  return insights.slice(0, 4);
 }

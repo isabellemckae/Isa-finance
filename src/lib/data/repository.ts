@@ -62,6 +62,47 @@ export interface FinanceRepository {
 
   /** Appends an audit event attributed to the user (no financial values in metadata). */
   audit(action: string, entityType: string, entityId: string | null): Promise<void>;
+
+  // Personal CFO conversations (text and answer metadata only; never raw tool data)
+  listConversations(limit: number): Promise<ConversationSummary[]>;
+  getConversation(id: string): Promise<Conversation | null>;
+  createConversation(title: string): Promise<string>;
+  appendMessages(conversationId: string, messages: NewMessage[]): Promise<void>;
+  deleteConversation(id: string): Promise<void>;
+
+  // Personal CFO usage limits (UTC day)
+  getAiUsageToday(now: Date): Promise<AiUsage>;
+  recordAiUsage(inputTokens: number, outputTokens: number): Promise<void>;
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
+export interface StoredMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface Conversation extends ConversationSummary {
+  messages: StoredMessage[];
+}
+
+export interface NewMessage {
+  role: "user" | "assistant";
+  content: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AiUsage {
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 export interface ManualAccountInput {

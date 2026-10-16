@@ -73,4 +73,6 @@ export const limiters = {
   loginPerAccount: createRateLimiter({ limit: 20, windowMs: 60 * 60_000 }),
   /** TOTP verification: per user. */
   mfa: createRateLimiter({ limit: 5, windowMs: 15 * 60_000 }),
+  /** Personal CFO messages: per user, per minute (daily limits are stored in the database). */
+  cfo: createRateLimiter({ limit: 8, windowMs: 60_000 }),
 };

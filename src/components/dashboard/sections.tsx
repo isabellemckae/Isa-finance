@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, CheckCircle2, CreditCard, Landmark, Lightbulb, PiggyBank, Wallet } from "lucide-react";
+import { CalendarClock, CreditCard, Landmark, PiggyBank, Wallet } from "lucide-react";
 import type { DashboardModel, Insight } from "@/lib/finance/dashboard";
+import { InsightList } from "./insight-list";
 import { formatDate } from "@/lib/finance/dates";
 import { relativeTime, percentFromBps } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -16,45 +17,22 @@ type Model = DashboardModel;
 // Personal CFO insights (rule-based in Phase 1)
 // ---------------------------------------------------------------------------
 
-const insightIcon: Record<Insight["tone"], typeof Lightbulb> = {
-  positive: CheckCircle2,
-  neutral: Lightbulb,
-  attention: AlertTriangle,
-};
-
 export function InsightsPanel({ insights }: { insights: Insight[] }) {
   return (
     <Card aria-labelledby="insights-title" className="bg-blush/40">
       <CardHeader>
         <div>
           <CardTitle id="insights-title">Personal CFO</CardTitle>
-          <CardDescription>Rule-based insights from your numbers. The AI CFO arrives in Phase 3.</CardDescription>
+          <CardDescription>Insights calculated from your numbers.</CardDescription>
         </div>
+        <Link href="/cfo" className="text-sm font-medium text-accent-ink">
+          Ask
+        </Link>
       </CardHeader>
-      {insights.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing needs your attention right now.</p>
-      ) : (
-        <ul className="space-y-3">
-          {insights.map((i) => {
-            const Icon = insightIcon[i.tone];
-            return (
-              <li key={i.id} className="flex gap-3 rounded-2xl bg-surface p-4">
-                <Icon
-                  className={cn(
-                    "mt-0.5 size-5 shrink-0",
-                    i.tone === "attention" ? "text-attention" : i.tone === "positive" ? "text-positive" : "text-accent-ink",
-                  )}
-                  aria-hidden
-                />
-                <div>
-                  <p className="text-sm font-medium">{i.title}</p>
-                  <p className="mt-0.5 text-sm text-muted-foreground">{i.body}</p>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <InsightList insights={insights} />
+      <Link href="/cfo/briefing" className="mt-4 inline-flex text-sm font-medium text-accent-ink">
+        Weekly and monthly briefing
+      </Link>
     </Card>
   );
 }

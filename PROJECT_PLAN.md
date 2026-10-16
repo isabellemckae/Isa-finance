@@ -123,7 +123,7 @@ Acceptance criteria:
 - Credit availability is never included in cash; pending and stale data are labeled.
 - No secret is readable from client bundles (`NEXT_PUBLIC_*` limited to Supabase URL + publishable key).
 
-### Phase 2 — Accounts, Transactions, Budget ✅ (awaiting owner review)
+### Phase 2 — Accounts, Transactions, Budget ✅
 - Accounts page (connection health, nicknames, masked ids, manual accounts).
 - Transactions page (filters, search, category edits via overrides, notes, exclusions,
   CSV import with dedupe preview).
@@ -132,7 +132,7 @@ Acceptance criteria:
 - Acceptance: user edits never mutate provider data; CSV re-import is idempotent;
   RLS tests cover every new write path.
 
-### Phase 3 — Personal CFO
+### Phase 3 — Personal CFO ✅
 - `/cfo` chat UI, `POST /api/cfo/chat`, OpenAI tool calling with a fixed read-only tool
   registry, data minimization, conversation persistence, audit events.
 - Acceptance: every numeric claim in an answer is traceable to a tool result; tool
@@ -156,8 +156,9 @@ Acceptance criteria:
 |---|---|
 | Phase 0 planning docs | ✅ Complete |
 | Phase 1 foundation | ✅ Complete, reviewed and approved by the owner |
-| Phase 2 accounts, transactions, budget, Supabase data | ✅ Complete, **awaiting owner review before Phase 3** |
-| Phase 3 Personal CFO | ⏸ Not started (needs approval) |
+| Phase 2 accounts, transactions, budget, Supabase data | ✅ Complete, approved by the owner |
+| Phase 3 Personal CFO | ✅ Complete. AI answers need the owner's OpenAI key |
+| Phase 4 Plaid sandbox | 🚧 In progress |
 
 Phase 1 checklist:
 
@@ -207,6 +208,35 @@ Caveats: the iPhone runs use Chromium with iPhone 15 viewport, touch and user ag
 WebKit/Safari is not installed in the build environment, so test on a real iPhone at
 review. Supabase was verified locally (Postgres 16 + PostgREST 12), not against your
 hosted project.
+
+Phase 3 checklist:
+
+- [x] Deterministic forecast (`projectCashFlow`), proactive insights (low cash, budget
+      over/near, unusual transaction, possible duplicate charge, category spike, upcoming
+      bills, savings opportunity, data quality) and weekly/monthly briefings, with tests
+- [x] 15 read-only CFO tools over a frozen per-request snapshot, strict schemas, Zod
+      validation, `actual`/`estimate`/`projection` status on every result
+- [x] Agent loop with round, call, token and history limits; amount verification with
+      one repair round; unverified amounts flagged in the UI
+- [x] Offline (non-AI) answers for common questions, used with no key, over budget, or
+      on provider errors
+- [x] OpenAI Responses API adapter (`store: false`, no retries, timeout, error mapping)
+- [x] Migration `…000400_cfo_conversations_usage.sql`: message metadata, daily usage
+      table with SECURITY DEFINER increment, conversation timestamps; RLS tests
+- [x] Conversations persisted in both repositories (demo + Supabase), integration tests
+- [x] `POST /api/cfo/chat` with same-origin check, auth/MFA, rate limit, body limit
+- [x] `/cfo` chat (suggestions, follow-ups, history, delete, sources and status badges)
+      and `/cfo/briefing`; dashboard insights link to both
+- [x] Tests: tool permissions (no writes, no id/user parameters), data isolation,
+      calculation accuracy against the finance services, prompt injection, limits, errors
+
+Phase 3 verification (latest run): ESLint clean · `tsc` clean · Vitest **231** unit tests ·
+RLS SQL suites (Phases 1–3) passing · **14** PostgREST integration tests · Playwright
+**83** tests (iPhone 15 emulation + desktop) · `next build` succeeds · no secrets in
+client bundles.
+
+Not verified in Phase 3: live OpenAI answers (needs the owner's key). The adapter is
+typed against the official SDK and covered by fake-model tests of the agent loop.
 
 _Status is updated at the end of each working session; see the git log for detail._
 

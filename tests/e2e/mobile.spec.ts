@@ -13,6 +13,9 @@ const PAGES = [
   "/budget/paycheck",
   "/budget/goals",
   "/settings",
+  "/cfo",
+  "/cfo/briefing",
+  "/cfo/briefing?period=month",
 ];
 
 test.describe("responsive layout", () => {

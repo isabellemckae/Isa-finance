@@ -44,6 +44,10 @@ Run `npm run check` after every meaningful change, and run `test:db` after any m
 - The service-role client (`src/lib/supabase/admin.ts`) is only for the Plaid
   sync and webhook paths.
 - No payment initiation, transfers or money movement, ever. The AI gets read-only tools only.
+- Personal CFO tools (`src/lib/cfo/tools.ts`) read only the frozen `CfoContext`. They never
+  take a user or id parameter, never return internal ids or tokens, and every new tool needs
+  permission, isolation and accuracy tests in `tools.test.ts`. The model must not do
+  arithmetic: add a deterministic tool instead.
 - Plaid stays in `sandbox`. Production banking, live data and deployments need explicit
   owner approval.
 - Don't connect live financial accounts or real data without authorization.
